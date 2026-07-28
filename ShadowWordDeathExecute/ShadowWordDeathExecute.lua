@@ -163,13 +163,22 @@ UpdateIndicator = function()
 		return
 	end
 
-	if select(2, UnitClass("player")) ~= "PRIEST" or not IsHostileLivingTarget() then
+	if not UnitAffectingCombat("player")
+		or select(2, UnitClass("player")) ~= "PRIEST"
+		or not IsHostileLivingTarget() then
 		HideIndicator()
 		return
 	end
 
 	local maximumHealth = UnitHealthMax("target")
 	if not issecretvalue(maximumHealth) and maximumHealth == 0 then
+		HideIndicator()
+		return
+	end
+
+	local cooldownInfo = C_Spell.GetSpellCooldown(SPELL_ID)
+	if cooldownInfo and cooldownInfo.isActive then
+		WatchSpellCooldown()
 		HideIndicator()
 		return
 	end
@@ -192,6 +201,11 @@ local function CreateCheckbox(parent, label, x, y)
 	text:SetText(label)
 
 	return checkbox
+end
+
+local function CloseSettings()
+	SetTestMode(false)
+	settings:Hide()
 end
 
 local function CreateSettingsWindow()
@@ -217,8 +231,12 @@ local function CreateSettingsWindow()
 	title:SetPoint("TOPLEFT", settings, "TOPLEFT", 14, -14)
 	title:SetText("Shadow Word: Death Execute")
 
-	local closeButton = CreateFrame("Button", nil, settings, "UIPanelCloseButton")
-	closeButton:SetPoint("TOPRIGHT", settings, "TOPRIGHT", 0, 0)
+	local closeButton = CreateFrame("Button", nil, settings)
+	closeButton:SetSize(24, 24)
+	closeButton:SetPoint("TOPRIGHT", settings, "TOPRIGHT", -8, -8)
+	closeButton:SetNormalFontObject(GameFontNormal)
+	closeButton:SetText("X")
+	closeButton:SetScript("OnClick", CloseSettings)
 
 	lockedCheck = CreateCheckbox(settings, "Закрепить", 16, -48)
 	lockedCheck:SetScript("OnClick", function(self)
@@ -274,9 +292,6 @@ local function CreateSettingsWindow()
 		testCheck:SetChecked(testMode)
 		sizeSlider:SetValue(database.size)
 	end)
-	settings:SetScript("OnHide", function()
-		SetTestMode(false)
-	end)
 	settings:Hide()
 end
 
@@ -300,7 +315,7 @@ end)
 SLASH_SHADOWWORDDEATHEXECUTE1 = "/swd"
 SlashCmdList.SHADOWWORDDEATHEXECUTE = function()
 	if settings:IsShown() then
-		settings:Hide()
+		CloseSettings()
 	else
 		settings:Show()
 	end
@@ -309,6 +324,8 @@ end
 indicator:RegisterEvent("PLAYER_LOGIN")
 indicator:RegisterEvent("PLAYER_ENTERING_WORLD")
 indicator:RegisterEvent("PLAYER_TARGET_CHANGED")
+indicator:RegisterEvent("PLAYER_REGEN_DISABLED")
+indicator:RegisterEvent("PLAYER_REGEN_ENABLED")
 indicator:RegisterUnitEvent("UNIT_HEALTH", "target")
 indicator:RegisterUnitEvent("UNIT_HEALTH_FREQUENT", "target")
 indicator:RegisterUnitEvent("UNIT_MAXHEALTH", "target")
