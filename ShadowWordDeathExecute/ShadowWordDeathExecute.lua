@@ -146,6 +146,14 @@ local function ApplyExecuteHealthAlpha()
 	icon:SetAlpha(select(4, color:GetRGBA()))
 end
 
+local function IsSpellReadyNow()
+	local cooldownInfo = C_Spell.GetSpellCooldown(SPELL_ID)
+	-- isActive is a documented NeverSecret field. For charge spells it tracks
+	-- whether the spell itself is unavailable; an active recharge is exposed
+	-- separately through SpellChargeInfo and does not hide an available charge.
+	return not cooldownInfo or not cooldownInfo.isActive
+end
+
 local function WatchSpellCooldown()
 	local duration = C_Spell.GetSpellCooldownDuration(SPELL_ID)
 	if not duration then
@@ -176,6 +184,12 @@ UpdateIndicator = function()
 	local maximumHealth = UnitHealthMax("target")
 	if not issecretvalue(maximumHealth) and maximumHealth == 0 then
 		HideIndicator()
+		return
+	end
+
+	if not IsSpellReadyNow() then
+		HideIndicator()
+		WatchSpellCooldown()
 		return
 	end
 
