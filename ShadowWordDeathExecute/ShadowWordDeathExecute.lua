@@ -256,9 +256,16 @@ indicator:RegisterEvent("PLAYER_LOGIN")
 indicator:RegisterEvent("PLAYER_ENTERING_WORLD")
 indicator:RegisterEvent("PLAYER_TARGET_CHANGED")
 indicator:RegisterUnitEvent("UNIT_HEALTH", "target")
+indicator:RegisterUnitEvent("UNIT_HEALTH_FREQUENT", "target")
 indicator:RegisterUnitEvent("UNIT_MAXHEALTH", "target")
+indicator:RegisterUnitEvent("UNIT_FLAGS", "target")
+indicator:RegisterUnitEvent("UNIT_FACTION", "target")
+indicator:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
+indicator:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 indicator:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 indicator:RegisterEvent("SPELL_UPDATE_USABLE")
+indicator:RegisterEvent("SPELL_UPDATE_CHARGES")
+indicator:RegisterEvent("ACTIONBAR_UPDATE_USABLE")
 indicator:RegisterEvent("SPELLS_CHANGED")
 
 indicator:SetScript("OnEvent", function(_, event, unit)
@@ -268,7 +275,9 @@ indicator:SetScript("OnEvent", function(_, event, unit)
 		SetIconSize(database.size)
 		SetLocked(database.locked)
 		CreateSettingsWindow()
-	elseif (event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH") and unit ~= "target" then
+	elseif (event == "UNIT_HEALTH" or event == "UNIT_HEALTH_FREQUENT" or event == "UNIT_MAXHEALTH" or event == "UNIT_FLAGS" or event == "UNIT_FACTION") and unit ~= "target" then
+		return
+	elseif (event == "UNIT_POWER_UPDATE" or event == "UNIT_SPELLCAST_SUCCEEDED") and unit ~= "player" then
 		return
 	end
 
