@@ -12,16 +12,16 @@ jobs:
   update-release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
       - name: Build addon archive
         run: |
           mkdir -p dist
-          zip -r dist/ShadowWordDeathExecute-1.0.0.zip ShadowWordDeathExecute
+          zip -r dist/ShadowWordDeathExecute-1.1.0.zip ShadowWordDeathExecute
 
       - name: Replace release archive
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload v1.0.0 dist/ShadowWordDeathExecute-1.0.0.zip --clobber
+        run: gh release upload v1.1.0 dist/ShadowWordDeathExecute-1.1.0.zip --clobber

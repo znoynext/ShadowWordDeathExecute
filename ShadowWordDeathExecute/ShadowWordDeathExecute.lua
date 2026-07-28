@@ -3,6 +3,19 @@ local EXECUTE_THRESHOLD = 0.20
 local DEFAULT_SIZE = 48
 local MIN_SIZE = 24
 local MAX_SIZE = 128
+local MAX_OFFSET = 10000
+
+local validPoints = {
+	TOPLEFT = true,
+	TOP = true,
+	TOPRIGHT = true,
+	LEFT = true,
+	CENTER = true,
+	RIGHT = true,
+	BOTTOMLEFT = true,
+	BOTTOM = true,
+	BOTTOMRIGHT = true,
+}
 
 local function CreateExecuteAlphaCurve()
 	local curve = C_CurveUtil.CreateColorCurve()
@@ -39,8 +52,18 @@ local settings
 local lockedCheck
 local testCheck
 local sizeText
+local sizeSlider
 local testMode = false
 local UpdateIndicator
+
+local function ClampNumber(value, minimum, maximum, fallback)
+	value = tonumber(value)
+	if not value or value ~= value then
+		return fallback
+	end
+
+	return math.min(maximum, math.max(minimum, value))
+end
 
 local function InitializeDatabase()
 	if type(SWDExecuteDB) ~= "table" then
@@ -48,11 +71,11 @@ local function InitializeDatabase()
 	end
 
 	database = SWDExecuteDB
-	database.point = database.point or "CENTER"
-	database.relativePoint = database.relativePoint or "CENTER"
-	database.x = tonumber(database.x) or 0
-	database.y = tonumber(database.y) or 0
-	database.size = math.min(MAX_SIZE, math.max(MIN_SIZE, tonumber(database.size) or DEFAULT_SIZE))
+	database.point = validPoints[database.point] and database.point or "CENTER"
+	database.relativePoint = validPoints[database.relativePoint] and database.relativePoint or "CENTER"
+	database.x = ClampNumber(database.x, -MAX_OFFSET, MAX_OFFSET, 0)
+	database.y = ClampNumber(database.y, -MAX_OFFSET, MAX_OFFSET, 0)
+	database.size = ClampNumber(database.size, MIN_SIZE, MAX_SIZE, DEFAULT_SIZE)
 	if type(database.locked) ~= "boolean" then
 		database.locked = true
 	end
@@ -72,8 +95,7 @@ local function SavePosition()
 end
 
 local function SetIconSize(size)
-	size = math.floor(tonumber(size) or DEFAULT_SIZE)
-	size = math.min(MAX_SIZE, math.max(MIN_SIZE, size))
+	size = math.floor(ClampNumber(size, MIN_SIZE, MAX_SIZE, DEFAULT_SIZE))
 	database.size = size
 	indicator:SetSize(size, size)
 
@@ -82,13 +104,28 @@ local function SetIconSize(size)
 	end
 end
 
+local function UpdateInteractionState()
+	indicator:EnableMouse(testMode and not database.locked)
+end
+
 local function SetLocked(locked)
 	database.locked = locked and true or false
-	indicator:EnableMouse(not database.locked)
+	UpdateInteractionState()
 
 	if lockedCheck then
 		lockedCheck:SetChecked(database.locked)
 	end
+end
+
+local function SetTestMode(enabled)
+	testMode = enabled and true or false
+
+	if testCheck then
+		testCheck:SetChecked(testMode)
+	end
+
+	UpdateInteractionState()
+	UpdateIndicator()
 end
 
 local function HideIndicator()
@@ -106,8 +143,20 @@ local function ApplyExecuteHealthAlpha()
 	icon:SetAlpha(select(4, color:GetRGBA()))
 end
 
+local function WatchSpellCooldown()
+	local duration = C_Spell.GetSpellCooldownDuration(SPELL_ID)
+	if not duration then
+		duration = C_Spell.GetSpellChargeDuration(SPELL_ID)
+	end
+
+	if duration then
+		cooldownWatcher:SetCooldownFromDurationObject(duration)
+	end
+end
+
 UpdateIndicator = function()
 	if testMode then
+		icon:SetDesaturated(false)
 		icon:SetAlpha(1)
 		icon:Show()
 		indicator:Show()
@@ -125,21 +174,13 @@ UpdateIndicator = function()
 		return
 	end
 
-	local cooldownInfo = C_Spell.GetSpellCooldown(SPELL_ID)
-	if cooldownInfo and cooldownInfo.isActive then
-		local cooldownDuration = C_Spell.GetSpellCooldownDuration(SPELL_ID)
-		if cooldownDuration then
-			cooldownWatcher:SetCooldownFromDurationObject(cooldownDuration)
-		end
-		HideIndicator()
-		return
-	end
-
 	ApplyExecuteHealthAlpha()
+	icon:SetDesaturated(false)
 	indicator:Show()
 	-- SetShown accepts Midnight Secret booleans, so this does not branch on
 	-- protected spell-usability data.
 	icon:SetShown(C_Spell.IsSpellUsable(SPELL_ID))
+	WatchSpellCooldown()
 end
 
 local function CreateCheckbox(parent, label, x, y)
@@ -155,7 +196,7 @@ end
 
 local function CreateSettingsWindow()
 	settings = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-	settings:SetSize(260, 180)
+	settings:SetSize(260, 210)
 	settings:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 	settings:SetMovable(true)
 	settings:SetClampedToScreen(true)
@@ -176,14 +217,8 @@ local function CreateSettingsWindow()
 	title:SetPoint("TOPLEFT", settings, "TOPLEFT", 14, -14)
 	title:SetText("Shadow Word: Death Execute")
 
-	local closeButton = CreateFrame("Button", nil, settings)
-	closeButton:SetSize(24, 24)
-	closeButton:SetPoint("TOPRIGHT", settings, "TOPRIGHT", -8, -8)
-	closeButton:SetNormalFontObject(GameFontNormal)
-	closeButton:SetText("X")
-	closeButton:SetScript("OnClick", function()
-		settings:Hide()
-	end)
+	local closeButton = CreateFrame("Button", nil, settings, "UIPanelCloseButton")
+	closeButton:SetPoint("TOPRIGHT", settings, "TOPRIGHT", 0, 0)
 
 	lockedCheck = CreateCheckbox(settings, "Закрепить", 16, -48)
 	lockedCheck:SetScript("OnClick", function(self)
@@ -192,51 +227,70 @@ local function CreateSettingsWindow()
 
 	testCheck = CreateCheckbox(settings, "Тест", 16, -78)
 	testCheck:SetScript("OnClick", function(self)
-		testMode = self:GetChecked() and true or false
-		UpdateIndicator()
+		SetTestMode(self:GetChecked())
 	end)
 
 	sizeText = settings:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	sizeText:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -112)
 
-	local slider = CreateFrame("Slider", nil, settings)
-	slider:SetSize(170, 16)
-	slider:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -138)
-	slider:SetOrientation("HORIZONTAL")
-	slider:SetMinMaxValues(MIN_SIZE, MAX_SIZE)
-	slider:SetValueStep(1)
-	slider:SetObeyStepOnDrag(true)
-	slider:SetThumbTexture("Interface/Buttons/UI-SliderBar-Button-Horizontal")
-	slider:GetThumbTexture():SetSize(16, 16)
+	sizeSlider = CreateFrame("Slider", nil, settings)
+	sizeSlider:SetSize(170, 16)
+	sizeSlider:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -138)
+	sizeSlider:SetOrientation("HORIZONTAL")
+	sizeSlider:SetMinMaxValues(MIN_SIZE, MAX_SIZE)
+	sizeSlider:SetValueStep(1)
+	sizeSlider:SetObeyStepOnDrag(true)
+	sizeSlider:SetThumbTexture("Interface/Buttons/UI-SliderBar-Button-Horizontal")
+	sizeSlider:GetThumbTexture():SetSize(16, 16)
 
-	local track = slider:CreateTexture(nil, "BACKGROUND")
+	local track = sizeSlider:CreateTexture(nil, "BACKGROUND")
 	track:SetColorTexture(0.25, 0.25, 0.25, 1)
-	track:SetPoint("LEFT", slider, "LEFT", 0, 0)
-	track:SetPoint("RIGHT", slider, "RIGHT", 0, 0)
+	track:SetPoint("LEFT", sizeSlider, "LEFT", 0, 0)
+	track:SetPoint("RIGHT", sizeSlider, "RIGHT", 0, 0)
 	track:SetHeight(6)
 
-	slider:SetScript("OnValueChanged", function(_, value)
+	sizeSlider:SetScript("OnValueChanged", function(_, value)
 		SetIconSize(value)
 	end)
-	slider:SetValue(database.size)
+	sizeSlider:SetValue(database.size)
+
+	local resetButton = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
+	resetButton:SetSize(100, 22)
+	resetButton:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -166)
+	resetButton:SetText("Сбросить")
+	resetButton:SetScript("OnClick", function()
+		database.point = "CENTER"
+		database.relativePoint = "CENTER"
+		database.x = 0
+		database.y = 0
+		database.size = DEFAULT_SIZE
+		ApplySavedPosition()
+		SetIconSize(DEFAULT_SIZE)
+		sizeSlider:SetValue(DEFAULT_SIZE)
+	end)
 
 	settings:SetScript("OnShow", function()
 		lockedCheck:SetChecked(database.locked)
 		testCheck:SetChecked(testMode)
-		slider:SetValue(database.size)
+		sizeSlider:SetValue(database.size)
+	end)
+	settings:SetScript("OnHide", function()
+		SetTestMode(false)
 	end)
 	settings:Hide()
 end
 
 indicator:SetScript("OnDragStart", function(self)
-	if not database.locked then
+	if testMode and not database.locked then
 		self:StartMoving()
 	end
 end)
 
 indicator:SetScript("OnDragStop", function(self)
-	self:StopMovingOrSizing()
-	SavePosition()
+	if testMode and not database.locked then
+		self:StopMovingOrSizing()
+		SavePosition()
+	end
 end)
 
 cooldownWatcher:SetScript("OnCooldownDone", function()
@@ -265,7 +319,6 @@ indicator:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 indicator:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 indicator:RegisterEvent("SPELL_UPDATE_USABLE")
 indicator:RegisterEvent("SPELL_UPDATE_CHARGES")
-indicator:RegisterEvent("ACTIONBAR_UPDATE_USABLE")
 indicator:RegisterEvent("SPELLS_CHANGED")
 
 indicator:SetScript("OnEvent", function(_, event, unit)
