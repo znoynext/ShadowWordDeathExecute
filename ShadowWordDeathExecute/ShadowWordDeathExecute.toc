@@ -1,0 +1,5 @@
+## Interface: 120007
+## Title: Shadow Word: Death Execute
+## Notes: Shows Shadow Word: Death when the current hostile target is in execute range.
+
+ShadowWordDeathExecute.lua
