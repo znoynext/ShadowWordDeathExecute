@@ -39,6 +39,7 @@ indicator:RegisterForDrag("LeftButton")
 local icon = indicator:CreateTexture(nil, "ARTWORK")
 icon:SetAllPoints()
 icon:SetTexture(C_Spell.GetSpellTexture(SPELL_ID))
+indicator:Hide()
 
 -- This invisible Cooldown receives the secret-safe DurationObject and signals
 -- the exact end of a cooldown without reading its protected timing fields.
@@ -55,6 +56,8 @@ local sizeText
 local sizeSlider
 local testMode = false
 local UpdateIndicator
+local InitializeAddon
+local addonInitialized = false
 
 local function ClampNumber(value, minimum, maximum, fallback)
 	value = tonumber(value)
@@ -176,13 +179,6 @@ UpdateIndicator = function()
 		return
 	end
 
-	local cooldownInfo = C_Spell.GetSpellCooldown(SPELL_ID)
-	if cooldownInfo and cooldownInfo.isActive then
-		WatchSpellCooldown()
-		HideIndicator()
-		return
-	end
-
 	ApplyExecuteHealthAlpha()
 	icon:SetDesaturated(false)
 	indicator:Show()
@@ -205,10 +201,16 @@ end
 
 local function CloseSettings()
 	SetTestMode(false)
-	settings:Hide()
+	if settings then
+		settings:Hide()
+	end
 end
 
 local function CreateSettingsWindow()
+	if settings then
+		return
+	end
+
 	settings = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
 	settings:SetSize(260, 210)
 	settings:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
@@ -295,6 +297,18 @@ local function CreateSettingsWindow()
 	settings:Hide()
 end
 
+InitializeAddon = function()
+	if not addonInitialized then
+		InitializeDatabase()
+		ApplySavedPosition()
+		SetIconSize(database.size)
+		SetLocked(database.locked)
+	end
+
+	CreateSettingsWindow()
+	addonInitialized = true
+end
+
 indicator:SetScript("OnDragStart", function(self)
 	if testMode and not database.locked then
 		self:StartMoving()
@@ -314,6 +328,8 @@ end)
 
 SLASH_SHADOWWORDDEATHEXECUTE1 = "/swd"
 SlashCmdList.SHADOWWORDDEATHEXECUTE = function()
+	InitializeAddon()
+
 	if settings:IsShown() then
 		CloseSettings()
 	else
@@ -327,7 +343,6 @@ indicator:RegisterEvent("PLAYER_TARGET_CHANGED")
 indicator:RegisterEvent("PLAYER_REGEN_DISABLED")
 indicator:RegisterEvent("PLAYER_REGEN_ENABLED")
 indicator:RegisterUnitEvent("UNIT_HEALTH", "target")
-indicator:RegisterUnitEvent("UNIT_HEALTH_FREQUENT", "target")
 indicator:RegisterUnitEvent("UNIT_MAXHEALTH", "target")
 indicator:RegisterUnitEvent("UNIT_FLAGS", "target")
 indicator:RegisterUnitEvent("UNIT_FACTION", "target")
@@ -339,13 +354,9 @@ indicator:RegisterEvent("SPELL_UPDATE_CHARGES")
 indicator:RegisterEvent("SPELLS_CHANGED")
 
 indicator:SetScript("OnEvent", function(_, event, unit)
-	if event == "PLAYER_LOGIN" then
-		InitializeDatabase()
-		ApplySavedPosition()
-		SetIconSize(database.size)
-		SetLocked(database.locked)
-		CreateSettingsWindow()
-	elseif (event == "UNIT_HEALTH" or event == "UNIT_HEALTH_FREQUENT" or event == "UNIT_MAXHEALTH" or event == "UNIT_FLAGS" or event == "UNIT_FACTION") and unit ~= "target" then
+	if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
+		InitializeAddon()
+	elseif (event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" or event == "UNIT_FLAGS" or event == "UNIT_FACTION") and unit ~= "target" then
 		return
 	elseif (event == "UNIT_POWER_UPDATE" or event == "UNIT_SPELLCAST_SUCCEEDED") and unit ~= "player" then
 		return
@@ -353,5 +364,3 @@ indicator:SetScript("OnEvent", function(_, event, unit)
 
 	UpdateIndicator()
 end)
-
-indicator:Hide()
