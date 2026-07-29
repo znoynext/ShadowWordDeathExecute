@@ -15,6 +15,7 @@ ADDON_NAME = "ShadowWordDeathExecute"
 ADDON_DIR = ROOT / ADDON_NAME
 TOC_NAME = f"{ADDON_NAME}.toc"
 LUA_NAME = f"{ADDON_NAME}.lua"
+MODEL_CHECKS = ROOT / "scripts" / "model_checks.lua"
 
 FORBIDDEN_PACKAGE_PARTS = {
     ".git",
@@ -78,12 +79,15 @@ def validate_source(errors: list[str]) -> None:
     source = lua.read_text(encoding="utf-8-sig")
     required_markers = {
         "slash command": 'SLASH_SHADOWWORDDEATHEXECUTE1 = "/swd"',
-        "combat gate": 'UnitAffectingCombat("player")',
+        "combat gate": "UnitAffectingCombat(PLAYER_UNIT)",
         "Secret-safe health curve": "C_CurveUtil.CreateColorCurve()",
-        "Secret-safe target health": 'UnitHealthPercent("target", true, executeHealthCurve)',
+        "Secret-safe target health": "UnitHealthPercent(TARGET_UNIT, true, executeHealthCurve)",
         "execute threshold": "local EXECUTE_THRESHOLD = 0.20",
         "Blizzard glow template": '"ActionButtonSpellAlertTemplate"',
         "boolean glow setting": "database.glowEnabled",
+        "fail-closed initialization guard": "if not addonInitialized then",
+        "own cooldown excludes GCD": "cooldownInfo and cooldownInfo.isActive and not spellOnGCD",
+        "charge-safe readiness": "return not ownSpellCooldownActive",
     }
     for description, marker in required_markers.items():
         if marker not in source:
@@ -95,6 +99,8 @@ def validate_source(errors: list[str]) -> None:
         fail(errors, "Direct UnitHealth use would reintroduce unsafe execute HP arithmetic.")
     if re.search(r"\bUnitHealthMax\s*\([^)]*\)\s*[/\*]", source):
         fail(errors, "UnitHealthMax must not be used for execute HP arithmetic.")
+    if re.search(r"return\s+not\s+C_Spell\.GetSpell(?:Cooldown|Charge)Duration", source):
+        fail(errors, "DurationObjects must not be treated as readiness booleans.")
 
     for obsolete_marker in ("GLOW_PULSE", "GLOW_STRONG", "CreatePulseAnimation", "UIDropDownMenu_"):
         if obsolete_marker in source:
@@ -105,6 +111,24 @@ def validate_source(errors: list[str]) -> None:
     glow_start = source.find("local glowContainer =", indicator_start)
     if indicator_start == -1 or early_hide == -1 or glow_start == -1 or not indicator_start < early_hide < glow_start:
         fail(errors, "indicator:Hide() must remain immediately in the early UI initialization path.")
+
+    test_mode = source.find("if testMode then")
+    combat_gate = source.find("UnitAffectingCombat(PLAYER_UNIT)")
+    if test_mode == -1 or combat_gate == -1 or test_mode > combat_gate:
+        fail(errors, "Test mode must bypass the combat and target gates.")
+
+    own_cooldown = source.find("if not IsSpellReadyNow() then")
+    own_cooldown_hide = source.find("HideIndicator()", own_cooldown)
+    if own_cooldown == -1 or own_cooldown_hide == -1:
+        fail(errors, "Own Shadow Word: Death cooldown must hide the indicator.")
+
+    cooldown_done = source.find('cooldownWatcher:SetScript("OnCooldownDone"')
+    cooldown_update = source.find("RequestIndicatorUpdate()", cooldown_done)
+    if cooldown_done == -1 or cooldown_update == -1:
+        fail(errors, "Cooldown completion must request an indicator refresh.")
+
+    if not MODEL_CHECKS.is_file():
+        fail(errors, "Missing execute-indicator model regression checks.")
 
 
 def validate_package(archive: Path, errors: list[str]) -> None:

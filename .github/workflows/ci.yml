@@ -33,13 +33,18 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Check Lua syntax
-        run: luac5.1 -p ShadowWordDeathExecute/ShadowWordDeathExecute.lua
+        run: |
+          luac5.1 -p ShadowWordDeathExecute/ShadowWordDeathExecute.lua
+          luac5.1 -p scripts/model_checks.lua
+
+      - name: Run execute-indicator model checks
+        run: lua5.1 scripts/model_checks.lua
 
       - name: Run Luacheck
         run: luacheck ShadowWordDeathExecute
 
       - name: Check StyLua formatting
-        run: stylua --check ShadowWordDeathExecute
+        run: stylua --check ShadowWordDeathExecute scripts/model_checks.lua
 
       - name: Check patch whitespace
         shell: bash

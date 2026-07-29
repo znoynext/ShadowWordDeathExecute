@@ -1,9 +1,22 @@
 local SPELL_ID = 32379 -- Shadow Word: Death
+local PLAYER_UNIT = "player"
+local TARGET_UNIT = "target"
+local PRIEST_CLASS = "PRIEST"
 local EXECUTE_THRESHOLD = 0.20
 local DEFAULT_SIZE = 48
 local MIN_SIZE = 24
 local MAX_SIZE = 128
 local MAX_OFFSET = 10000
+
+local DATABASE_DEFAULTS = {
+	point = "CENTER",
+	relativePoint = "CENTER",
+	x = 0,
+	y = 0,
+	size = DEFAULT_SIZE,
+	locked = true,
+	glowEnabled = false,
+}
 
 local validPoints = {
 	TOPLEFT = true,
@@ -69,7 +82,9 @@ local sizeSlider
 local testMode = false
 local ownSpellCooldownActive = false
 local spellOnGCD = false
+local playerClass
 local UpdateIndicator
+local RequestIndicatorUpdate
 local InitializeAddon
 local addonInitialized = false
 
@@ -88,16 +103,16 @@ local function InitializeDatabase()
 	end
 
 	database = SWDExecuteDB
-	database.point = validPoints[database.point] and database.point or "CENTER"
-	database.relativePoint = validPoints[database.relativePoint] and database.relativePoint or "CENTER"
-	database.x = ClampNumber(database.x, -MAX_OFFSET, MAX_OFFSET, 0)
-	database.y = ClampNumber(database.y, -MAX_OFFSET, MAX_OFFSET, 0)
-	database.size = ClampNumber(database.size, MIN_SIZE, MAX_SIZE, DEFAULT_SIZE)
+	database.point = validPoints[database.point] and database.point or DATABASE_DEFAULTS.point
+	database.relativePoint = validPoints[database.relativePoint] and database.relativePoint or DATABASE_DEFAULTS.relativePoint
+	database.x = ClampNumber(database.x, -MAX_OFFSET, MAX_OFFSET, DATABASE_DEFAULTS.x)
+	database.y = ClampNumber(database.y, -MAX_OFFSET, MAX_OFFSET, DATABASE_DEFAULTS.y)
+	database.size = ClampNumber(database.size, MIN_SIZE, MAX_SIZE, DATABASE_DEFAULTS.size)
 	if type(database.locked) ~= "boolean" then
-		database.locked = true
+		database.locked = DATABASE_DEFAULTS.locked
 	end
 	if type(database.glowEnabled) ~= "boolean" then
-		database.glowEnabled = database.glow == "blizzard" or database.glow == "pulse" or database.glow == "strong"
+		database.glowEnabled = database.glow == "blizzard" or database.glow == "pulse" or database.glow == "strong" or DATABASE_DEFAULTS.glowEnabled
 	end
 	database.glow = nil
 end
@@ -135,8 +150,12 @@ end
 
 local function StopBlizzardGlow()
 	if blizzardGlow then
-		blizzardGlow.ProcStartAnim:Stop()
-		blizzardGlow.ProcLoop:Stop()
+		if blizzardGlow.ProcStartAnim then
+			blizzardGlow.ProcStartAnim:Stop()
+		end
+		if blizzardGlow.ProcLoop then
+			blizzardGlow.ProcLoop:Stop()
+		end
 		blizzardGlow:Hide()
 	end
 end
@@ -148,22 +167,15 @@ local function CreateBlizzardGlow()
 
 	-- This is Blizzard_ActionBar's Retail proc-glow template. It is purely
 	-- visual and does not turn this indicator into a secure action button.
-	blizzardGlow = CreateFrame("Frame", nil, glowContainer, "ActionButtonSpellAlertTemplate")
+	local created, frame = pcall(CreateFrame, "Frame", nil, glowContainer, "ActionButtonSpellAlertTemplate")
+	if not created or not frame then
+		return nil
+	end
+
+	blizzardGlow = frame
 	blizzardGlow:SetPoint("CENTER", indicator, "CENTER")
 	UpdateGlowSize()
 	return blizzardGlow
-end
-
-local function StartBlizzardGlow()
-	local frame = CreateBlizzardGlow()
-	if not frame then
-		return
-	end
-
-	frame:Show()
-	frame.ProcStartAnim:Stop()
-	frame.ProcLoop:Stop()
-	frame.ProcStartAnim:Play()
 end
 
 local function HideGlow()
@@ -173,7 +185,7 @@ local function HideGlow()
 end
 
 local function ShowGlow()
-	if not database.glowEnabled then
+	if not database or not database.glowEnabled then
 		HideGlow()
 		return
 	end
@@ -182,9 +194,25 @@ local function ShowGlow()
 		return
 	end
 
+	local frame = CreateBlizzardGlow()
+	if not frame then
+		-- Glow is optional. A missing Blizzard template must not affect the icon.
+		HideGlow()
+		return
+	end
+
 	blizzardGlowActive = true
 	glowContainer:Show()
-	StartBlizzardGlow()
+	frame:Show()
+	if frame.ProcStartAnim then
+		frame.ProcStartAnim:Stop()
+	end
+	if frame.ProcLoop then
+		frame.ProcLoop:Stop()
+	end
+	if frame.ProcStartAnim then
+		frame.ProcStartAnim:Play()
+	end
 end
 
 local function UpdateInteractionState()
@@ -208,7 +236,7 @@ local function SetTestMode(enabled)
 	end
 
 	UpdateInteractionState()
-	UpdateIndicator()
+	RequestIndicatorUpdate()
 end
 
 local function SetGlowEnabled(enabled)
@@ -218,7 +246,7 @@ local function SetGlowEnabled(enabled)
 		glowCheck:SetChecked(database.glowEnabled)
 	end
 
-	UpdateIndicator()
+	RequestIndicatorUpdate()
 end
 
 local function HideIndicator()
@@ -227,11 +255,11 @@ local function HideIndicator()
 end
 
 local function IsHostileLivingTarget()
-	return UnitExists("target") and not UnitIsDeadOrGhost("target") and UnitCanAttack("player", "target")
+	return UnitExists(TARGET_UNIT) and not UnitIsDeadOrGhost(TARGET_UNIT) and UnitCanAttack(PLAYER_UNIT, TARGET_UNIT)
 end
 
 local function ApplyExecuteHealthAlpha()
-	local color = UnitHealthPercent("target", true, executeHealthCurve)
+	local color = UnitHealthPercent(TARGET_UNIT, true, executeHealthCurve)
 	local alpha = select(4, color:GetRGBA())
 	icon:SetAlpha(alpha)
 	glowContainer:SetAlpha(alpha)
@@ -269,6 +297,13 @@ local function WatchSpellCooldown()
 end
 
 UpdateIndicator = function()
+	-- Events can arrive before PLAYER_LOGIN. Until initialization succeeds, keep
+	-- the early-hidden frame fail-closed instead of evaluating partial state.
+	if not addonInitialized then
+		HideIndicator()
+		return
+	end
+
 	if testMode then
 		icon:SetDesaturated(false)
 		icon:SetAlpha(1)
@@ -279,12 +314,12 @@ UpdateIndicator = function()
 		return
 	end
 
-	if not UnitAffectingCombat("player") or select(2, UnitClass("player")) ~= "PRIEST" or not IsHostileLivingTarget() then
+	if not UnitAffectingCombat(PLAYER_UNIT) or playerClass ~= PRIEST_CLASS or not IsHostileLivingTarget() then
 		HideIndicator()
 		return
 	end
 
-	local maximumHealth = UnitHealthMax("target")
+	local maximumHealth = UnitHealthMax(TARGET_UNIT)
 	if not issecretvalue(maximumHealth) and maximumHealth == 0 then
 		HideIndicator()
 		return
@@ -317,6 +352,15 @@ UpdateIndicator = function()
 		end
 	end
 	WatchSpellCooldown()
+end
+
+RequestIndicatorUpdate = function()
+	-- UI/API errors must fail closed: a stale visible execute indicator is worse
+	-- than a temporarily missing one. This wrapper also protects optional glow.
+	local updated = pcall(UpdateIndicator)
+	if not updated then
+		HideIndicator()
+	end
 end
 
 local function CreateCheckbox(parent, label, x, y)
@@ -415,14 +459,14 @@ local function CreateSettingsWindow()
 	resetButton:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -198)
 	resetButton:SetText("Сбросить")
 	resetButton:SetScript("OnClick", function()
-		database.point = "CENTER"
-		database.relativePoint = "CENTER"
-		database.x = 0
-		database.y = 0
-		database.size = DEFAULT_SIZE
+		database.point = DATABASE_DEFAULTS.point
+		database.relativePoint = DATABASE_DEFAULTS.relativePoint
+		database.x = DATABASE_DEFAULTS.x
+		database.y = DATABASE_DEFAULTS.y
+		database.size = DATABASE_DEFAULTS.size
 		ApplySavedPosition()
-		SetIconSize(DEFAULT_SIZE)
-		sizeSlider:SetValue(DEFAULT_SIZE)
+		SetIconSize(DATABASE_DEFAULTS.size)
+		sizeSlider:SetValue(DATABASE_DEFAULTS.size)
 	end)
 
 	settings:SetScript("OnShow", function()
@@ -435,15 +479,18 @@ local function CreateSettingsWindow()
 end
 
 InitializeAddon = function()
-	if not addonInitialized then
-		InitializeDatabase()
-		ApplySavedPosition()
-		SetIconSize(database.size)
-		SetLocked(database.locked)
+	if addonInitialized then
+		return true
 	end
 
+	InitializeDatabase()
+	ApplySavedPosition()
+	SetIconSize(database.size)
+	SetLocked(database.locked)
 	CreateSettingsWindow()
-	addonInitialized = true
+	playerClass = select(2, UnitClass(PLAYER_UNIT))
+	addonInitialized = settings ~= nil
+	return addonInitialized
 end
 
 indicator:SetScript("OnDragStart", function(self)
@@ -460,12 +507,15 @@ indicator:SetScript("OnDragStop", function(self)
 end)
 
 cooldownWatcher:SetScript("OnCooldownDone", function()
-	UpdateIndicator()
+	RequestIndicatorUpdate()
 end)
 
 SLASH_SHADOWWORDDEATHEXECUTE1 = "/swd"
-SlashCmdList.SHADOWWORDDEATHEXECUTE = function()
-	InitializeAddon()
+local function ToggleSettings()
+	if not InitializeAddon() then
+		HideIndicator()
+		return
+	end
 
 	if settings:IsShown() then
 		CloseSettings()
@@ -474,32 +524,56 @@ SlashCmdList.SHADOWWORDDEATHEXECUTE = function()
 	end
 end
 
+SlashCmdList.SHADOWWORDDEATHEXECUTE = function()
+	if not pcall(ToggleSettings) then
+		HideIndicator()
+	end
+end
+
 indicator:RegisterEvent("PLAYER_LOGIN")
 indicator:RegisterEvent("PLAYER_ENTERING_WORLD")
 indicator:RegisterEvent("PLAYER_TARGET_CHANGED")
 indicator:RegisterEvent("PLAYER_REGEN_DISABLED")
 indicator:RegisterEvent("PLAYER_REGEN_ENABLED")
-indicator:RegisterUnitEvent("UNIT_HEALTH", "target")
-indicator:RegisterUnitEvent("UNIT_MAXHEALTH", "target")
-indicator:RegisterUnitEvent("UNIT_FLAGS", "target")
-indicator:RegisterUnitEvent("UNIT_FACTION", "target")
-indicator:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
-indicator:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+indicator:RegisterUnitEvent("UNIT_HEALTH", TARGET_UNIT)
+indicator:RegisterUnitEvent("UNIT_MAXHEALTH", TARGET_UNIT)
+indicator:RegisterUnitEvent("UNIT_FLAGS", TARGET_UNIT)
+indicator:RegisterUnitEvent("UNIT_FACTION", TARGET_UNIT)
+indicator:RegisterUnitEvent("UNIT_POWER_UPDATE", PLAYER_UNIT)
+indicator:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", PLAYER_UNIT)
 indicator:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 indicator:RegisterEvent("SPELL_UPDATE_USABLE")
 indicator:RegisterEvent("SPELL_UPDATE_CHARGES")
 indicator:RegisterEvent("SPELLS_CHANGED")
 
-indicator:SetScript("OnEvent", function(_, event, unit)
+local targetEvents = {
+	UNIT_HEALTH = true,
+	UNIT_MAXHEALTH = true,
+	UNIT_FLAGS = true,
+	UNIT_FACTION = true,
+}
+
+local playerEvents = {
+	UNIT_POWER_UPDATE = true,
+	UNIT_SPELLCAST_SUCCEEDED = true,
+}
+
+local function HandleEvent(event, unit)
 	if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
 		InitializeAddon()
 	elseif event == "SPELL_UPDATE_COOLDOWN" then
 		UpdateSpellCooldownState()
-	elseif (event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" or event == "UNIT_FLAGS" or event == "UNIT_FACTION") and unit ~= "target" then
+	elseif targetEvents[event] and unit ~= TARGET_UNIT then
 		return
-	elseif (event == "UNIT_POWER_UPDATE" or event == "UNIT_SPELLCAST_SUCCEEDED") and unit ~= "player" then
+	elseif playerEvents[event] and unit ~= PLAYER_UNIT then
 		return
 	end
 
-	UpdateIndicator()
+	RequestIndicatorUpdate()
+end
+
+indicator:SetScript("OnEvent", function(_, event, unit)
+	if not pcall(HandleEvent, event, unit) then
+		HideIndicator()
+	end
 end)
