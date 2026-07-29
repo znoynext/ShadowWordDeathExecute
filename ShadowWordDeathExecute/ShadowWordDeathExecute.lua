@@ -125,6 +125,8 @@ local sizeText
 local sizeSlider
 local glowDropDown
 local testMode = false
+local ownSpellCooldownActive = false
+local spellOnGCD = false
 local UpdateIndicator
 local InitializeAddon
 local addonInitialized = false
@@ -317,14 +319,23 @@ local function ApplyExecuteHealthAlpha()
 end
 
 local function GetOwnSpellCooldownDuration()
-	-- ignoreGCD makes this DurationObject represent only SW:D's own cooldown.
+	-- ignoreGCD keeps this watcher on SW:D cooldown/recharge rather than GCD.
 	return C_Spell.GetSpellCooldownDuration(SPELL_ID, true)
 end
 
+local function UpdateSpellCooldownState()
+	-- isOnGCD is only reliable while handling SPELL_UPDATE_COOLDOWN. Both it
+	-- and isActive are documented NeverSecret fields, so this cache is safe to
+	-- use from the other indicator events.
+	local cooldownInfo = C_Spell.GetSpellCooldown(SPELL_ID)
+	spellOnGCD = cooldownInfo and cooldownInfo.isOnGCD and true or false
+	ownSpellCooldownActive = cooldownInfo and cooldownInfo.isActive and not spellOnGCD
+end
+
 local function IsSpellReadyNow()
-	-- A recharging extra charge is exposed separately and does not make an
-	-- available charge unavailable. GCD is explicitly excluded here.
-	return not GetOwnSpellCooldownDuration()
+	-- A charge recharge can have a DurationObject while another charge remains
+	-- usable. The cached cooldown state represents only an unavailable SW:D.
+	return not ownSpellCooldownActive
 end
 
 local function WatchSpellCooldown()
@@ -373,13 +384,20 @@ UpdateIndicator = function()
 	indicator:Show()
 	ShowGlow()
 
-	-- Cooldown and GCD are handled above. This remains a visual-safe check for
-	-- learned/resource usability without branching on protected spell data.
-	local usable = C_Spell.IsSpellUsable(SPELL_ID)
+	-- Cooldown and GCD are handled above. Preserve learned/resource usability.
+	local usable, insufficientPower = C_Spell.IsSpellUsable(SPELL_ID)
 	icon:SetShown(usable)
 	if glowActive then
 		-- Keep glow and icon synchronized through the same visual-safe operation.
 		glowContainer:SetShown(usable)
+	end
+	if spellOnGCD and not insufficientPower then
+		-- The cooldown-event cache proves that the spell cooldown is GCD-only.
+		-- Keep the documented insufficient-power usability gate intact.
+		icon:Show()
+		if glowActive then
+			glowContainer:Show()
+		end
 	end
 	WatchSpellCooldown()
 end
@@ -602,6 +620,8 @@ indicator:RegisterEvent("SPELLS_CHANGED")
 indicator:SetScript("OnEvent", function(_, event, unit)
 	if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
 		InitializeAddon()
+	elseif event == "SPELL_UPDATE_COOLDOWN" then
+		UpdateSpellCooldownState()
 	elseif (event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" or event == "UNIT_FLAGS" or event == "UNIT_FACTION") and unit ~= "target" then
 		return
 	elseif (event == "UNIT_POWER_UPDATE" or event == "UNIT_SPELLCAST_SUCCEEDED") and unit ~= "player" then
