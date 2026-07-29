@@ -1,5 +1,5 @@
 ## Interface: 120007
-## Version: 1.2.0
+## Version: 1.2.1
 ## Title: Shadow Word: Death Execute
 ## Notes: Shows Shadow Word: Death when the current hostile target is in execute range.
 ## OptionalDeps: Blizzard_ActionBar

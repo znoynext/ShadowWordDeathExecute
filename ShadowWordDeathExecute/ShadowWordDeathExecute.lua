@@ -59,6 +59,8 @@ local icon = indicator:CreateTexture(nil, "ARTWORK")
 icon:SetAllPoints()
 icon:SetTexture(C_Spell.GetSpellTexture(SPELL_ID))
 
+indicator:Hide()
+
 -- The container receives the same Secret-safe alpha as the icon. Its child
 -- animations can pulse without ever reimplementing the protected HP check.
 local glowContainer = CreateFrame("Frame", nil, indicator)
