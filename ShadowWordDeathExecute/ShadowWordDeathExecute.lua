@@ -146,16 +146,19 @@ local function ApplyExecuteHealthAlpha()
 	icon:SetAlpha(select(4, color:GetRGBA()))
 end
 
+local function GetOwnSpellCooldownDuration()
+	-- ignoreGCD makes this DurationObject represent only SW:D's own cooldown.
+	return C_Spell.GetSpellCooldownDuration(SPELL_ID, true)
+end
+
 local function IsSpellReadyNow()
-	local cooldownInfo = C_Spell.GetSpellCooldown(SPELL_ID)
-	-- isActive is a documented NeverSecret field. For charge spells it tracks
-	-- whether the spell itself is unavailable; an active recharge is exposed
-	-- separately through SpellChargeInfo and does not hide an available charge.
-	return not cooldownInfo or not cooldownInfo.isActive
+	-- A recharging extra charge is exposed separately and does not make an
+	-- available charge unavailable. GCD is explicitly excluded here.
+	return not GetOwnSpellCooldownDuration()
 end
 
 local function WatchSpellCooldown()
-	local duration = C_Spell.GetSpellCooldownDuration(SPELL_ID)
+	local duration = GetOwnSpellCooldownDuration()
 	if not duration then
 		duration = C_Spell.GetSpellChargeDuration(SPELL_ID)
 	end
@@ -196,8 +199,8 @@ UpdateIndicator = function()
 	ApplyExecuteHealthAlpha()
 	icon:SetDesaturated(false)
 	indicator:Show()
-	-- SetShown accepts Midnight Secret booleans, so this does not branch on
-	-- protected spell-usability data.
+	-- Cooldown and GCD are handled above. This remains a visual-safe check for
+	-- learned/resource usability without branching on protected spell data.
 	icon:SetShown(C_Spell.IsSpellUsable(SPELL_ID))
 	WatchSpellCooldown()
 end
