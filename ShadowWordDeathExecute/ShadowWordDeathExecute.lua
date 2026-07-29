@@ -306,9 +306,7 @@ local function HideIndicator()
 end
 
 local function IsHostileLivingTarget()
-	return UnitExists("target")
-		and not UnitIsDeadOrGhost("target")
-		and UnitCanAttack("player", "target")
+	return UnitExists("target") and not UnitIsDeadOrGhost("target") and UnitCanAttack("player", "target")
 end
 
 local function ApplyExecuteHealthAlpha()
@@ -360,9 +358,7 @@ UpdateIndicator = function()
 		return
 	end
 
-	if not UnitAffectingCombat("player")
-		or select(2, UnitClass("player")) ~= "PRIEST"
-		or not IsHostileLivingTarget() then
+	if not UnitAffectingCombat("player") or select(2, UnitClass("player")) ~= "PRIEST" or not IsHostileLivingTarget() then
 		HideIndicator()
 		return
 	end

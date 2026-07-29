@@ -1,0 +1,19 @@
+package-as: ShadowWordDeathExecute
+
+move-folders:
+  ShadowWordDeathExecute/ShadowWordDeathExecute: ShadowWordDeathExecute
+
+ignore:
+  - .agents
+  - .codex
+  - .git
+  - .gitattributes
+  - .github
+  - .gitignore
+  - .luacheckrc
+  - .pkgmeta
+  - README.md
+  - docs
+  - scripts
+  - stylua.toml
+  - tests

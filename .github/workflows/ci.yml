@@ -1,0 +1,89 @@
+name: Development CI
+
+on:
+  push:
+    branches:
+      - develop/v2
+  pull_request:
+    branches:
+      - develop/v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v5.1.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+
+      - name: Install Lua tooling
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes lua5.1 luarocks
+          luarocks --lua-version=5.1 --local install luacheck 1.2.0
+          echo "$HOME/.luarocks/bin" >> "$GITHUB_PATH"
+          cargo install stylua --version 2.5.2 --locked
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Check Lua syntax
+        run: luac5.1 -p ShadowWordDeathExecute/ShadowWordDeathExecute.lua
+
+      - name: Run Luacheck
+        run: luacheck ShadowWordDeathExecute
+
+      - name: Check StyLua formatting
+        run: stylua --check ShadowWordDeathExecute
+
+      - name: Check patch whitespace
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
+          elif [[ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+            git diff --check "${{ github.event.before }}" "${{ github.sha }}"
+          else
+            git diff --check HEAD^ HEAD
+          fi
+
+      - name: Validate addon invariants and TOC
+        run: python3 scripts/validate_addon.py
+
+  package:
+    name: Package test ZIP
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v5.1.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+
+      - name: Build dry-run package
+        # BigWigsMods/packager@v2.5.1
+        uses: BigWigsMods/packager@6d50adb6e8517eefef63f4afb16a6518166a6b28
+        with:
+          args: -d
+          pandoc: false
+
+      - name: Validate installable ZIP
+        shell: bash
+        run: |
+          archive="$(find .release -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          test -n "$archive"
+          python3 scripts/validate_addon.py --package "$archive"
+
+      - name: Upload test ZIP
+        # actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ShadowWordDeathExecute-test-${{ github.sha }}
+          path: .release/*.zip
+          if-no-files-found: error
+          retention-days: 14
