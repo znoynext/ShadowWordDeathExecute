@@ -1,7 +1,8 @@
 ## Interface: 120007
-## Version: 1.1.4
+## Version: 1.2.0
 ## Title: Shadow Word: Death Execute
 ## Notes: Shows Shadow Word: Death when the current hostile target is in execute range.
+## OptionalDeps: Blizzard_ActionBar
 ## SavedVariables: SWDExecuteDB
 
 ShadowWordDeathExecute.lua
