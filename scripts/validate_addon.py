@@ -82,6 +82,8 @@ def validate_source(errors: list[str]) -> None:
         "Secret-safe health curve": "C_CurveUtil.CreateColorCurve()",
         "Secret-safe target health": 'UnitHealthPercent("target", true, executeHealthCurve)',
         "execute threshold": "local EXECUTE_THRESHOLD = 0.20",
+        "Blizzard glow template": '"ActionButtonSpellAlertTemplate"',
+        "boolean glow setting": "database.glowEnabled",
     }
     for description, marker in required_markers.items():
         if marker not in source:
@@ -93,6 +95,10 @@ def validate_source(errors: list[str]) -> None:
         fail(errors, "Direct UnitHealth use would reintroduce unsafe execute HP arithmetic.")
     if re.search(r"\bUnitHealthMax\s*\([^)]*\)\s*[/\*]", source):
         fail(errors, "UnitHealthMax must not be used for execute HP arithmetic.")
+
+    for obsolete_marker in ("GLOW_PULSE", "GLOW_STRONG", "CreatePulseAnimation", "UIDropDownMenu_"):
+        if obsolete_marker in source:
+            fail(errors, f"Obsolete glow architecture remains: {obsolete_marker}.")
 
     indicator_start = source.find('local indicator = CreateFrame("Frame", nil, UIParent)')
     early_hide = source.find("indicator:Hide()", indicator_start)

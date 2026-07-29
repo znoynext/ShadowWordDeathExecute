@@ -5,25 +5,6 @@ local MIN_SIZE = 24
 local MAX_SIZE = 128
 local MAX_OFFSET = 10000
 
-local GLOW_NONE = "none"
-local GLOW_BLIZZARD = "blizzard"
-local GLOW_PULSE = "pulse"
-local GLOW_STRONG = "strong"
-
-local glowOptions = {
-	{ value = GLOW_NONE, text = "Нет" },
-	{ value = GLOW_BLIZZARD, text = "Blizzard" },
-	{ value = GLOW_PULSE, text = "Pulse" },
-	{ value = GLOW_STRONG, text = "Strong Pulse" },
-}
-
-local validGlowModes = {
-	[GLOW_NONE] = true,
-	[GLOW_BLIZZARD] = true,
-	[GLOW_PULSE] = true,
-	[GLOW_STRONG] = true,
-}
-
 local validPoints = {
 	TOPLEFT = true,
 	TOP = true,
@@ -61,54 +42,15 @@ icon:SetTexture(C_Spell.GetSpellTexture(SPELL_ID))
 
 indicator:Hide()
 
--- The container receives the same Secret-safe alpha as the icon. Its child
--- animations can pulse without ever reimplementing the protected HP check.
+-- The container receives the same Secret-safe alpha as the icon. The Blizzard
+-- proc glow remains purely visual and never reimplements the protected HP check.
 local glowContainer = CreateFrame("Frame", nil, indicator)
 glowContainer:SetAllPoints()
 glowContainer:SetFrameLevel(indicator:GetFrameLevel() + 1)
 glowContainer:Hide()
 
-local pulseGlow = glowContainer:CreateTexture(nil, "ARTWORK")
-pulseGlow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-pulseGlow:SetBlendMode("ADD")
-pulseGlow:SetVertexColor(0.72, 0.35, 1.0, 1.0)
-pulseGlow:SetPoint("TOPLEFT", indicator, "TOPLEFT", -4, 4)
-pulseGlow:SetPoint("BOTTOMRIGHT", indicator, "BOTTOMRIGHT", 4, -4)
-pulseGlow:Hide()
-
-local strongPulseGlow = glowContainer:CreateTexture(nil, "ARTWORK")
-strongPulseGlow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-strongPulseGlow:SetBlendMode("ADD")
-strongPulseGlow:SetVertexColor(0.85, 0.45, 1.0, 1.0)
-strongPulseGlow:SetPoint("TOPLEFT", indicator, "TOPLEFT", -10, 10)
-strongPulseGlow:SetPoint("BOTTOMRIGHT", indicator, "BOTTOMRIGHT", 10, -10)
-strongPulseGlow:Hide()
-
-local function CreatePulseAnimation(texture, lowAlpha, highAlpha, halfCycle)
-	local animation = texture:CreateAnimationGroup()
-	animation:SetLooping("REPEAT")
-
-	local fadeIn = animation:CreateAnimation("Alpha")
-	fadeIn:SetFromAlpha(lowAlpha)
-	fadeIn:SetToAlpha(highAlpha)
-	fadeIn:SetDuration(halfCycle)
-	fadeIn:SetOrder(1)
-
-	local fadeOut = animation:CreateAnimation("Alpha")
-	fadeOut:SetFromAlpha(highAlpha)
-	fadeOut:SetToAlpha(lowAlpha)
-	fadeOut:SetDuration(halfCycle)
-	fadeOut:SetOrder(2)
-
-	return animation, lowAlpha
-end
-
-local pulseAnimation, pulseRestingAlpha = CreatePulseAnimation(pulseGlow, 0.30, 0.80, 0.50)
-local strongPulseAnimation, strongPulseRestingAlpha = CreatePulseAnimation(strongPulseGlow, 0.35, 1.00, 0.40)
-
 local blizzardGlow
-local activeGlowMode
-local glowActive = false
+local blizzardGlowActive = false
 
 -- This invisible Cooldown receives the secret-safe DurationObject and signals
 -- the exact end of a cooldown without reading its protected timing fields.
@@ -121,9 +63,9 @@ local database
 local settings
 local lockedCheck
 local testCheck
+local glowCheck
 local sizeText
 local sizeSlider
-local glowDropDown
 local testMode = false
 local ownSpellCooldownActive = false
 local spellOnGCD = false
@@ -154,7 +96,10 @@ local function InitializeDatabase()
 	if type(database.locked) ~= "boolean" then
 		database.locked = true
 	end
-	database.glow = validGlowModes[database.glow] and database.glow or GLOW_NONE
+	if type(database.glowEnabled) ~= "boolean" then
+		database.glowEnabled = database.glow == "blizzard" or database.glow == "pulse" or database.glow == "strong"
+	end
+	database.glow = nil
 end
 
 local function ApplySavedPosition()
@@ -188,19 +133,7 @@ local function SetIconSize(size)
 	end
 end
 
-local function StopAllGlowEffects()
-	if pulseAnimation:IsPlaying() then
-		pulseAnimation:Stop()
-	end
-	pulseGlow:SetAlpha(pulseRestingAlpha)
-	pulseGlow:Hide()
-
-	if strongPulseAnimation:IsPlaying() then
-		strongPulseAnimation:Stop()
-	end
-	strongPulseGlow:SetAlpha(strongPulseRestingAlpha)
-	strongPulseGlow:Hide()
-
+local function StopBlizzardGlow()
 	if blizzardGlow then
 		blizzardGlow.ProcStartAnim:Stop()
 		blizzardGlow.ProcLoop:Stop()
@@ -233,47 +166,25 @@ local function StartBlizzardGlow()
 	frame.ProcStartAnim:Play()
 end
 
-local function StartPulseGlow(texture, animation, restingAlpha)
-	texture:SetAlpha(restingAlpha)
-	texture:Show()
-	if not animation:IsPlaying() then
-		animation:Play()
-	end
-end
-
 local function HideGlow()
-	glowActive = false
-	activeGlowMode = nil
-	StopAllGlowEffects()
+	blizzardGlowActive = false
+	StopBlizzardGlow()
 	glowContainer:Hide()
 end
 
 local function ShowGlow()
-	local mode = database.glow
-	if mode == GLOW_NONE then
+	if not database.glowEnabled then
 		HideGlow()
 		return
 	end
 
-	if not glowActive then
-		glowActive = true
-		glowContainer:Show()
-	end
-
-	if activeGlowMode == mode then
+	if blizzardGlowActive then
 		return
 	end
 
-	StopAllGlowEffects()
-	activeGlowMode = mode
-
-	if mode == GLOW_BLIZZARD then
-		StartBlizzardGlow()
-	elseif mode == GLOW_PULSE then
-		StartPulseGlow(pulseGlow, pulseAnimation, pulseRestingAlpha)
-	elseif mode == GLOW_STRONG then
-		StartPulseGlow(strongPulseGlow, strongPulseAnimation, strongPulseRestingAlpha)
-	end
+	blizzardGlowActive = true
+	glowContainer:Show()
+	StartBlizzardGlow()
 end
 
 local function UpdateInteractionState()
@@ -297,6 +208,16 @@ local function SetTestMode(enabled)
 	end
 
 	UpdateInteractionState()
+	UpdateIndicator()
+end
+
+local function SetGlowEnabled(enabled)
+	database.glowEnabled = enabled and true or false
+
+	if glowCheck then
+		glowCheck:SetChecked(database.glowEnabled)
+	end
+
 	UpdateIndicator()
 end
 
@@ -383,7 +304,7 @@ UpdateIndicator = function()
 	-- Cooldown and GCD are handled above. Preserve learned/resource usability.
 	local usable, insufficientPower = C_Spell.IsSpellUsable(SPELL_ID)
 	icon:SetShown(usable)
-	if glowActive then
+	if database.glowEnabled then
 		-- Keep glow and icon synchronized through the same visual-safe operation.
 		glowContainer:SetShown(usable)
 	end
@@ -391,7 +312,7 @@ UpdateIndicator = function()
 		-- The cooldown-event cache proves that the spell cooldown is GCD-only.
 		-- Keep the documented insufficient-power usability gate intact.
 		icon:Show()
-		if glowActive then
+		if database.glowEnabled then
 			glowContainer:Show()
 		end
 	end
@@ -409,29 +330,6 @@ local function CreateCheckbox(parent, label, x, y)
 	return checkbox
 end
 
-local function GetGlowText(mode)
-	for _, option in ipairs(glowOptions) do
-		if option.value == mode then
-			return option.text
-		end
-	end
-
-	return "Нет"
-end
-
-local function RefreshGlowDropDown()
-	if glowDropDown then
-		UIDropDownMenu_SetSelectedValue(glowDropDown, database.glow)
-		UIDropDownMenu_SetText(glowDropDown, GetGlowText(database.glow))
-	end
-end
-
-local function SetGlowMode(mode)
-	database.glow = validGlowModes[mode] and mode or GLOW_NONE
-	RefreshGlowDropDown()
-	UpdateIndicator()
-end
-
 local function CloseSettings()
 	SetTestMode(false)
 	if settings then
@@ -445,7 +343,7 @@ local function CreateSettingsWindow()
 	end
 
 	settings = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-	settings:SetSize(270, 262)
+	settings:SetSize(270, 234)
 	settings:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 	settings:SetMovable(true)
 	settings:SetClampedToScreen(true)
@@ -507,35 +405,14 @@ local function CreateSettingsWindow()
 	end)
 	sizeSlider:SetValue(database.size)
 
-	local glowLabel = settings:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	glowLabel:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -168)
-	glowLabel:SetText("Свечение:")
-
-	glowDropDown = CreateFrame("Frame", nil, settings, "UIDropDownMenuTemplate")
-	glowDropDown:SetPoint("TOPLEFT", settings, "TOPLEFT", 4, -184)
-	UIDropDownMenu_SetWidth(glowDropDown, 170)
-	UIDropDownMenu_Initialize(glowDropDown, function(_, level)
-		if level ~= 1 then
-			return
-		end
-
-		for _, option in ipairs(glowOptions) do
-			local info = UIDropDownMenu_CreateInfo()
-			info.text = option.text
-			info.value = option.value
-			info.checked = database.glow == option.value
-			info.func = function(button)
-				SetGlowMode(button.value)
-				CloseDropDownMenus()
-			end
-			UIDropDownMenu_AddButton(info, level)
-		end
+	glowCheck = CreateCheckbox(settings, "Свечение", 16, -168)
+	glowCheck:SetScript("OnClick", function(self)
+		SetGlowEnabled(self:GetChecked())
 	end)
-	RefreshGlowDropDown()
 
 	local resetButton = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
 	resetButton:SetSize(100, 22)
-	resetButton:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -226)
+	resetButton:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -198)
 	resetButton:SetText("Сбросить")
 	resetButton:SetScript("OnClick", function()
 		database.point = "CENTER"
@@ -551,8 +428,8 @@ local function CreateSettingsWindow()
 	settings:SetScript("OnShow", function()
 		lockedCheck:SetChecked(database.locked)
 		testCheck:SetChecked(testMode)
+		glowCheck:SetChecked(database.glowEnabled)
 		sizeSlider:SetValue(database.size)
-		RefreshGlowDropDown()
 	end)
 	settings:Hide()
 end
