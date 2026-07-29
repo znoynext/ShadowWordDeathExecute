@@ -1,7 +1,9 @@
 std = "lua51"
+max_line_length = 160
 
 globals = {
 	"SLASH_SHADOWWORDDEATHEXECUTE1",
+	"SlashCmdList",
 	"SWDExecuteDB",
 }
 
@@ -13,8 +15,8 @@ read_globals = {
 	"CreateColor",
 	"CreateFrame",
 	"Enum",
+	"GameFontNormal",
 	"issecretvalue",
-	"SlashCmdList",
 	"UIParent",
 	"UIDropDownMenu_AddButton",
 	"UIDropDownMenu_CreateInfo",
