@@ -88,6 +88,11 @@ def validate_source(errors: list[str]) -> None:
         "fail-closed initialization guard": "if not addonInitialized then",
         "own cooldown excludes GCD": "cooldownInfo and cooldownInfo.isActive and not spellOnGCD",
         "charge-safe readiness": "return not ownSpellCooldownActive",
+        "core callback wrapper": "local function RunCoreCallback(callback, ...)",
+        "pre-unwind error reporting": "return xpcall(function()",
+        "Retail stack-aware reporting": "pcall(CallErrorHandler, message)",
+        "standard error handler": "pcall(geterrorhandler)",
+        "fail-closed error cleanup": "pcall(HideIndicator)",
     }
     for description, marker in required_markers.items():
         if marker not in source:
@@ -101,6 +106,14 @@ def validate_source(errors: list[str]) -> None:
         fail(errors, "UnitHealthMax must not be used for execute HP arithmetic.")
     if re.search(r"return\s+not\s+C_Spell\.GetSpell(?:Cooldown|Charge)Duration", source):
         fail(errors, "DurationObjects must not be treated as readiness booleans.")
+
+    for silent_pattern in (
+        "pcall(UpdateIndicator)",
+        "pcall(HandleEvent, event, unit)",
+        "pcall(ToggleSettings)",
+    ):
+        if silent_pattern in source:
+            fail(errors, f"Core callback errors must reach WoW's handler, not use silent {silent_pattern}.")
 
     for obsolete_marker in ("GLOW_PULSE", "GLOW_STRONG", "CreatePulseAnimation", "UIDropDownMenu_"):
         if obsolete_marker in source:
@@ -126,6 +139,14 @@ def validate_source(errors: list[str]) -> None:
     cooldown_update = source.find("RequestIndicatorUpdate()", cooldown_done)
     if cooldown_done == -1 or cooldown_update == -1:
         fail(errors, "Cooldown completion must request an indicator refresh.")
+
+    for callback in (
+        "RunCoreCallback(UpdateIndicator)",
+        "RunCoreCallback(ToggleSettings)",
+        "RunCoreCallback(HandleEvent, event, unit)",
+    ):
+        if callback not in source:
+            fail(errors, f"Core callback must use fail-closed error reporting: {callback}.")
 
     if not MODEL_CHECKS.is_file():
         fail(errors, "Missing execute-indicator model regression checks.")

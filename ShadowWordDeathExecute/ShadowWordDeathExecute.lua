@@ -254,6 +254,38 @@ local function HideIndicator()
 	indicator:Hide()
 end
 
+local function ReportCoreError(message)
+	-- xpcall invokes this before unwinding the callback stack. Hide first so a
+	-- failed update cannot leave a stale execute indicator on screen, then pass
+	-- the original error to WoW's current handler while that stack is available.
+	-- Each operation is protected to avoid an error loop during cleanup/reporting.
+	pcall(HideIndicator)
+
+	-- Retail's CallErrorHandler adjusts the callstack height and dispatches to
+	-- geterrorhandler(). The direct path keeps error reporting available if that
+	-- Blizzard helper is unavailable during an unusual load/API failure.
+	if type(CallErrorHandler) == "function" then
+		pcall(CallErrorHandler, message)
+	else
+		local foundHandler, errorHandler = pcall(geterrorhandler)
+		if foundHandler and type(errorHandler) == "function" then
+			pcall(errorHandler, message)
+		end
+	end
+
+	return message
+end
+
+local function RunCoreCallback(callback, ...)
+	-- Retail uses Lua 5.1-style xpcall, so capture arguments in a closure rather
+	-- than relying on xpcall argument forwarding.
+	local arguments = { ... }
+	local argumentCount = select("#", ...)
+	return xpcall(function()
+		return callback(unpack(arguments, 1, argumentCount))
+	end, ReportCoreError)
+end
+
 local function IsHostileLivingTarget()
 	return UnitExists(TARGET_UNIT) and not UnitIsDeadOrGhost(TARGET_UNIT) and UnitCanAttack(PLAYER_UNIT, TARGET_UNIT)
 end
@@ -355,12 +387,7 @@ UpdateIndicator = function()
 end
 
 RequestIndicatorUpdate = function()
-	-- UI/API errors must fail closed: a stale visible execute indicator is worse
-	-- than a temporarily missing one. This wrapper also protects optional glow.
-	local updated = pcall(UpdateIndicator)
-	if not updated then
-		HideIndicator()
-	end
+	RunCoreCallback(UpdateIndicator)
 end
 
 local function CreateCheckbox(parent, label, x, y)
@@ -525,9 +552,7 @@ local function ToggleSettings()
 end
 
 SlashCmdList.SHADOWWORDDEATHEXECUTE = function()
-	if not pcall(ToggleSettings) then
-		HideIndicator()
-	end
+	RunCoreCallback(ToggleSettings)
 end
 
 indicator:RegisterEvent("PLAYER_LOGIN")
@@ -573,7 +598,5 @@ local function HandleEvent(event, unit)
 end
 
 indicator:SetScript("OnEvent", function(_, event, unit)
-	if not pcall(HandleEvent, event, unit) then
-		HideIndicator()
-	end
+	RunCoreCallback(HandleEvent, event, unit)
 end)

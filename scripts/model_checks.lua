@@ -66,9 +66,10 @@ local function newRegion()
 	return region
 end
 
-local function newFrame(model, frameType, template)
+local function newFrame(model, frameType, parent, template)
 	local frame = {
 		frameType = frameType,
+		parent = parent,
 		template = template,
 		frameLevel = 1,
 		height = 0,
@@ -137,6 +138,10 @@ local function newFrame(model, frameType, template)
 	end
 
 	function frame:IsShown()
+		if self.isSettingsWindow and model.state.raiseSettingsError then
+			error("model slash failure")
+		end
+
 		return self.shown
 	end
 
@@ -215,6 +220,9 @@ local function newFrame(model, frameType, template)
 		frame.ProcStartAnim = newAnimation()
 		frame.ProcLoop = newAnimation()
 	end
+	if template == "BackdropTemplate" then
+		frame.isSettingsWindow = true
+	end
 
 	table.insert(model.frames, frame)
 	if template == "UICheckButtonTemplate" then
@@ -239,7 +247,7 @@ local function boot(savedVariables, hasGlowTemplate)
 		targetIsDead = false,
 		usable = true,
 	}
-	local model = { checkboxes = {}, frames = {}, state = state }
+	local model = { checkboxes = {}, errorReports = {}, frames = {}, state = state }
 
 	UIParent = newFrame({ checkboxes = {}, frames = {} }, "Frame")
 	ActionButtonSpellAlertMixin = hasGlowTemplate == false and nil or {}
@@ -275,11 +283,22 @@ local function boot(savedVariables, hasGlowTemplate)
 			end,
 		}
 	end
-	CreateFrame = function(frameType, _, _, template)
-		return newFrame(model, frameType, template)
+	CreateFrame = function(frameType, _, parent, template)
+		return newFrame(model, frameType, parent, template)
 	end
 	Enum = { LuaCurveType = { Step = 1 } }
 	GameFontNormal = {}
+	geterrorhandler = function()
+		return function(message)
+			table.insert(model.errorReports, message)
+			if state.raiseErrorHandlerError then
+				error("model error-handler failure")
+			end
+		end
+	end
+	CallErrorHandler = function(message)
+		return geterrorhandler()(message)
+	end
 	issecretvalue = function()
 		return false
 	end
@@ -314,6 +333,14 @@ local function boot(savedVariables, hasGlowTemplate)
 	expect(not indicator.shown, "startup must keep the indicator hidden")
 	trigger(indicator, "PLAYER_LOGIN")
 	return model, indicator
+end
+
+local function findGlowContainer(model, indicator)
+	for _, frame in ipairs(model.frames) do
+		if frame.parent == indicator and frame.frameType == "Frame" and not frame.template then
+			return frame
+		end
+	end
 end
 
 local function setExecuteTarget(state)
@@ -376,5 +403,47 @@ local noGlowModel, noGlowIndicator = boot({ glowEnabled = true }, false)
 setExecuteTarget(noGlowModel.state)
 trigger(noGlowIndicator, "SPELL_UPDATE_COOLDOWN")
 expect(noGlowIndicator.shown, "missing optional glow must not hide the execute indicator")
+
+local errorModel, errorIndicator = boot({ glowEnabled = true })
+local errorState = errorModel.state
+local errorGlowContainer = findGlowContainer(errorModel, errorIndicator)
+expect(errorGlowContainer, "model must find the glow container")
+
+setExecuteTarget(errorState)
+trigger(errorIndicator, "SPELL_UPDATE_COOLDOWN")
+expect(errorIndicator.shown and errorGlowContainer.shown, "error model must show the indicator and glow before a failure")
+
+errorState.raiseUpdateError = true
+UnitHealthPercent = function()
+	if errorState.raiseUpdateError then
+		error("model update failure")
+	end
+
+	return CreateColor(1, 1, 1, 1)
+end
+trigger(errorIndicator, "UNIT_HEALTH", "target")
+expect(not errorIndicator.shown, "core update failure must hide the indicator")
+expect(not errorGlowContainer.shown, "core update failure must hide the glow")
+expect(#errorModel.errorReports == 1, "core update failure must reach the standard error handler once")
+expect(
+	string.find(errorModel.errorReports[1], "model update failure", 1, true),
+	"core update failure must not be swallowed before error reporting"
+)
+
+errorState.raiseErrorHandlerError = true
+trigger(errorIndicator, "UNIT_HEALTH", "target")
+expect(#errorModel.errorReports == 2, "a broken error handler must not trigger an error-report loop")
+
+errorState.raiseErrorHandlerError = false
+errorState.raiseUpdateError = false
+trigger(errorIndicator, "UNIT_HEALTH", "target")
+expect(errorIndicator.shown, "normal updates must recover after a core failure")
+expect(#errorModel.errorReports == 2, "successful recovery must not emit another error")
+
+errorState.raiseSettingsError = true
+SlashCmdList.SHADOWWORDDEATHEXECUTE()
+expect(not errorIndicator.shown, "slash callback failure must hide the indicator")
+expect(#errorModel.errorReports == 3, "slash callback failure must reach the standard error handler once")
+errorState.raiseSettingsError = false
 
 print("ShadowWordDeathExecute model checks passed.")

@@ -9,12 +9,14 @@ globals = {
 
 read_globals = {
 	"ActionButtonSpellAlertMixin",
+	"CallErrorHandler",
 	"C_CurveUtil",
 	"C_Spell",
 	"CreateColor",
 	"CreateFrame",
 	"Enum",
 	"GameFontNormal",
+	"geterrorhandler",
 	"issecretvalue",
 	"UIParent",
 	"UnitAffectingCombat",
