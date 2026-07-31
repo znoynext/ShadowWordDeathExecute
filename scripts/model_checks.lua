@@ -425,10 +425,7 @@ trigger(errorIndicator, "UNIT_HEALTH", "target")
 expect(not errorIndicator.shown, "core update failure must hide the indicator")
 expect(not errorGlowContainer.shown, "core update failure must hide the glow")
 expect(#errorModel.errorReports == 1, "core update failure must reach the standard error handler once")
-expect(
-	string.find(errorModel.errorReports[1], "model update failure", 1, true),
-	"core update failure must not be swallowed before error reporting"
-)
+expect(string.find(errorModel.errorReports[1], "model update failure", 1, true), "core update failure must not be swallowed before error reporting")
 
 errorState.raiseErrorHandlerError = true
 trigger(errorIndicator, "UNIT_HEALTH", "target")
