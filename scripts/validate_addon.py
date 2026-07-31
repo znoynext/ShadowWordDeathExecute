@@ -89,7 +89,7 @@ def validate_source(errors: list[str]) -> None:
         "own cooldown excludes GCD": "cooldownInfo and cooldownInfo.isActive and not spellOnGCD",
         "charge-safe readiness": "return not ownSpellCooldownActive",
         "core callback wrapper": "local function RunCoreCallback(callback, ...)",
-        "pre-unwind error reporting": "return xpcall(function()",
+        "pre-unwind error reporting": "return xpcall(",
         "Retail stack-aware reporting": "pcall(CallErrorHandler, message)",
         "standard error handler": "pcall(geterrorhandler)",
         "fail-closed error cleanup": "pcall(HideIndicator)",

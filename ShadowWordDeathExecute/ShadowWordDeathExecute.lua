@@ -281,9 +281,12 @@ local function RunCoreCallback(callback, ...)
 	-- than relying on xpcall argument forwarding.
 	local arguments = { ... }
 	local argumentCount = select("#", ...)
-	return xpcall(function()
-		return callback(unpack(arguments, 1, argumentCount))
-	end, ReportCoreError)
+	return xpcall(
+		function()
+			return callback(unpack(arguments, 1, argumentCount))
+		end,
+		ReportCoreError
+	)
 end
 
 local function IsHostileLivingTarget()
