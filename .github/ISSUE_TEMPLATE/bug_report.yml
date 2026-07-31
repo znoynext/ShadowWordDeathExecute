@@ -1,0 +1,68 @@
+name: Bug report
+description: "Report a reproducible problem with Shadow Word: Death Execute."
+title: "[Bug]: "
+body:
+  - type: input
+    id: addon-version
+    attributes:
+      label: Addon version
+      description: The version shown in the addon list or release ZIP name.
+    validations:
+      required: true
+  - type: input
+    id: wow-version
+    attributes:
+      label: WoW Retail version
+      description: Include the game build if available.
+    validations:
+      required: true
+  - type: input
+    id: specialization
+    attributes:
+      label: Priest specialization
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the problem clearly.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: lua-error
+    attributes:
+      label: Lua error or stack trace
+      description: Paste the complete error or write "None" if no error was shown.
+  - type: dropdown
+    id: other-addons
+    attributes:
+      label: Does it reproduce with other addons disabled?
+      options:
+        - "Yes"
+        - "No"
+        - "Not tested"
+    validations:
+      required: true

@@ -45,6 +45,7 @@ FORBIDDEN_PACKAGE_PARTS = {
     ".github",
     ".agents",
     ".codex",
+    "distribution",
     "docs",
     "scripts",
     "tests",
@@ -55,6 +56,7 @@ FORBIDDEN_PACKAGE_FILES = {
     ".luacheckrc",
     ".pkgmeta",
     "README.md",
+    "README.ru.md",
     "stylua.toml",
 }
 

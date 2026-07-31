@@ -1,13 +1,55 @@
 # Shadow Word: Death Execute
 
-Минимальный аддон для Priest в WoW Retail. В бою иконка **Shadow Word: Death** появляется, когда текущая вражеская живая цель находится на 20% здоровья или ниже, а собственный cooldown способности готов. Global Cooldown не скрывает индикатор: он показывает, что SW:D должен быть следующим нажатием.
+[English](README.md) | [Русский](README.ru.md)
 
-Команда `/swd` открывает небольшое окно настройки:
+A lightweight World of Warcraft Retail addon for a Priest character that shows a Shadow Word: Death execute indicator when a hostile target is ready to finish.
 
-- `Закрепить` — запрещает перемещение индикатора.
-- `Тест` — показывает иконку для настройки; перемещать её можно только в этом режиме и при снятом закреплении.
-- Размер — меняет размер иконки.
-- `Свечение` — включает или выключает стандартное Blizzard-свечение индикатора.
-- `Сбросить` — возвращает позицию в центр и размер 48 px.
+## Features
 
-Позиция, размер, состояние закрепления и настройка свечения сохраняются между игровыми сессиями. После закрытия окна тестовый режим автоматически выключается.
+- Shows Shadow Word: Death in execute range.
+- Works only in combat and requires a hostile living target.
+- Uses the 20% execute threshold.
+- Respects Shadow Word: Death's own cooldown.
+- Does not hide the indicator because of the global cooldown alone.
+- Keeps the indicator available when one charge can still be used while another is recharging.
+- Optional Blizzard glow, a movable and resizable indicator, and compact `/swd` settings.
+- English and Russian localization.
+- Event-driven, with no external runtime libraries.
+
+## Installation
+
+1. Download the release ZIP.
+2. Extract the `ShadowWordDeathExecute` folder.
+3. Place it in `World of Warcraft/_retail_/Interface/AddOns`.
+4. Restart World of Warcraft or run `/reload`.
+
+## Usage
+
+Use `/swd` to open the compact settings window:
+
+- **Lock** prevents moving the indicator.
+- **Test** shows the icon for placement.
+- **Size** changes the icon size.
+- **Glow** enables the optional Blizzard glow.
+- **Reset** restores the default position and size.
+
+## Execute behavior
+
+Above 20% health, the icon is visually hidden. At 20% health or lower, it is visible when Shadow Word: Death is available. The global cooldown alone does not hide it, but Shadow Word: Death's own cooldown does. A charge that remains available is still treated as usable while another charge recharges.
+
+## Compatibility
+
+Designed for World of Warcraft Retail and Priest characters using Shadow Word: Death. The supported Interface version is defined in the addon TOC (currently `120007`).
+
+## Troubleshooting
+
+- Confirm that the addon is enabled.
+- Run `/reload`.
+- Check that you have the current addon version.
+- Enable Lua errors and include any stack trace in a report.
+- Try again with other addons disabled.
+- [Open a GitHub issue](https://github.com/znoynext/ShadowWordDeathExecute/issues) if the problem remains.
+
+## Development
+
+`main` is the production branch. `develop/v2` is the development branch. GitHub Actions builds a test ZIP for development and pull request checks.

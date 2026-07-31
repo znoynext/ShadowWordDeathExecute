@@ -13,6 +13,8 @@ ignore:
   - .luacheckrc
   - .pkgmeta
   - README.md
+  - README.ru.md
+  - distribution
   - docs
   - scripts
   - stylua.toml
