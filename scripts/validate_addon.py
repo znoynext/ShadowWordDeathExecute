@@ -16,6 +16,29 @@ ADDON_DIR = ROOT / ADDON_NAME
 TOC_NAME = f"{ADDON_NAME}.toc"
 LUA_NAME = f"{ADDON_NAME}.lua"
 MODEL_CHECKS = ROOT / "scripts" / "model_checks.lua"
+LOCALE_FILES = {
+    "enUS": "Locales/enUS.lua",
+    "ruRU": "Locales/ruRU.lua",
+}
+REQUIRED_LOCALE_KEYS = {"TITLE", "LOCK", "TEST", "SIZE", "GLOW", "RESET"}
+EXPECTED_LOCALES = {
+    "enUS": {
+        "TITLE": "Shadow Word: Death Execute",
+        "LOCK": "Lock",
+        "TEST": "Test",
+        "SIZE": "Size: %d",
+        "GLOW": "Glow",
+        "RESET": "Reset",
+    },
+    "ruRU": {
+        "TITLE": "Shadow Word: Death Execute",
+        "LOCK": "Закрепить",
+        "TEST": "Тест",
+        "SIZE": "Размер: %d",
+        "GLOW": "Свечение",
+        "RESET": "Сбросить",
+    },
+}
 
 FORBIDDEN_PACKAGE_PARTS = {
     ".git",
@@ -52,12 +75,83 @@ def toc_files(toc: Path, errors: list[str]) -> list[str]:
         if path.is_absolute() or ".." in path.parts:
             fail(errors, f"TOC contains an unsafe relative path: {line}")
             continue
-        files.append(line)
+        files.append(path.as_posix())
 
     if not files:
         fail(errors, "TOC does not list any addon files.")
 
     return files
+
+
+def parse_locale(locale: str, errors: list[str]) -> dict[str, str]:
+    path = ADDON_DIR / LOCALE_FILES[locale]
+    if not path.is_file():
+        fail(errors, f"Missing {locale} locale file: {path.relative_to(ROOT)}")
+        return {}
+
+    source = path.read_text(encoding="utf-8-sig")
+    table_match = re.search(
+        rf"addon\.Locales\.{locale}\s*=\s*\{{(?P<body>.*?)^\}}",
+        source,
+        re.DOTALL | re.MULTILINE,
+    )
+    if not table_match:
+        fail(errors, f"{locale} locale must define addon.Locales.{locale}.")
+        return {}
+
+    entries: dict[str, str] = {}
+    for entry in re.finditer(
+        r'^\s*(?P<key>[A-Z_]+)\s*=\s*"(?P<value>(?:[^"\\]|\\.)*)",?\s*$',
+        table_match.group("body"),
+        re.MULTILINE,
+    ):
+        key = entry.group("key")
+        if key in entries:
+            fail(errors, f"{locale} locale contains duplicate key: {key}")
+        entries[key] = entry.group("value")
+
+    return entries
+
+
+def validate_locales(entries: list[str], runtime: str, errors: list[str]) -> None:
+    for locale, filename in LOCALE_FILES.items():
+        if filename not in entries:
+            fail(errors, f"TOC is missing {locale} locale file: {filename}")
+
+    runtime_index = entries.index(LUA_NAME) if LUA_NAME in entries else -1
+    for locale, filename in LOCALE_FILES.items():
+        if filename in entries and (runtime_index == -1 or entries.index(filename) > runtime_index):
+            fail(errors, f"{locale} locale must load before {LUA_NAME} in the TOC.")
+
+    parsed_locales = {locale: parse_locale(locale, errors) for locale in LOCALE_FILES}
+    en_keys = set(parsed_locales["enUS"])
+    ru_keys = set(parsed_locales["ruRU"])
+    if en_keys != ru_keys:
+        fail(errors, "enUS and ruRU locales must use the same key set.")
+    for locale, values in parsed_locales.items():
+        missing = REQUIRED_LOCALE_KEYS - set(values)
+        if missing:
+            fail(errors, f"{locale} locale is missing required keys: {', '.join(sorted(missing))}")
+        for key, expected in EXPECTED_LOCALES[locale].items():
+            if values.get(key) != expected:
+                fail(errors, f"{locale} locale has an unexpected value for {key}.")
+
+    if "local _, addon = ..." not in runtime or "local L = addon.Locales[GetLocale()] or addon.Locales.enUS" not in runtime:
+        fail(errors, "Runtime Lua must use the private namespace with an enUS locale fallback.")
+    if re.search(r"[\u0400-\u04FF]", runtime):
+        fail(errors, "Runtime Lua must not contain hardcoded Russian UI labels.")
+
+    localized_markers = {
+        "title": "title:SetText(L.TITLE)",
+        "lock": "CreateCheckbox(settings, L.LOCK",
+        "test": "CreateCheckbox(settings, L.TEST",
+        "size": "sizeText:SetText(L.SIZE:format(size))",
+        "glow": "CreateCheckbox(settings, L.GLOW",
+        "reset": "resetButton:SetText(L.RESET)",
+    }
+    for description, marker in localized_markers.items():
+        if marker not in runtime:
+            fail(errors, f"Runtime Lua does not use the locale for the {description} label.")
 
 
 def validate_source(errors: list[str]) -> None:
@@ -77,6 +171,7 @@ def validate_source(errors: list[str]) -> None:
             fail(errors, f"TOC entry does not exist: {ADDON_NAME}/{entry}")
 
     source = lua.read_text(encoding="utf-8-sig")
+    validate_locales(entries, source, errors)
     required_markers = {
         "slash command": 'SLASH_SHADOWWORDDEATHEXECUTE1 = "/swd"',
         "combat gate": "UnitAffectingCombat(PLAYER_UNIT)",
@@ -173,7 +268,9 @@ def validate_package(archive: Path, errors: list[str]) -> None:
             fail(errors, f"Package contains a development file: {entry}")
 
     package_names = {entry.as_posix() for entry in entries}
-    for required in (f"{ADDON_NAME}/{TOC_NAME}", f"{ADDON_NAME}/{LUA_NAME}"):
+    required_files = [TOC_NAME, *toc_files(ADDON_DIR / TOC_NAME, errors)]
+    for required_file in required_files:
+        required = f"{ADDON_NAME}/{required_file}"
         if required not in package_names:
             fail(errors, f"Package is missing required runtime file: {required}")
 

@@ -1,3 +1,6 @@
+local _, addon = ...
+local L = addon.Locales[GetLocale()] or addon.Locales.enUS
+
 local SPELL_ID = 32379 -- Shadow Word: Death
 local PLAYER_UNIT = "player"
 local TARGET_UNIT = "target"
@@ -144,7 +147,7 @@ local function SetIconSize(size)
 	UpdateGlowSize()
 
 	if sizeText then
-		sizeText:SetText("Размер: " .. size)
+		sizeText:SetText(L.SIZE:format(size))
 	end
 end
 
@@ -435,7 +438,7 @@ local function CreateSettingsWindow()
 
 	local title = settings:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
 	title:SetPoint("TOPLEFT", settings, "TOPLEFT", 14, -14)
-	title:SetText("Shadow Word: Death Execute")
+	title:SetText(L.TITLE)
 
 	local closeButton = CreateFrame("Button", nil, settings)
 	closeButton:SetSize(24, 24)
@@ -444,12 +447,12 @@ local function CreateSettingsWindow()
 	closeButton:SetText("X")
 	closeButton:SetScript("OnClick", CloseSettings)
 
-	lockedCheck = CreateCheckbox(settings, "Закрепить", 16, -48)
+	lockedCheck = CreateCheckbox(settings, L.LOCK, 16, -48)
 	lockedCheck:SetScript("OnClick", function(self)
 		SetLocked(self:GetChecked())
 	end)
 
-	testCheck = CreateCheckbox(settings, "Тест", 16, -78)
+	testCheck = CreateCheckbox(settings, L.TEST, 16, -78)
 	testCheck:SetScript("OnClick", function(self)
 		SetTestMode(self:GetChecked())
 	end)
@@ -478,7 +481,7 @@ local function CreateSettingsWindow()
 	end)
 	sizeSlider:SetValue(database.size)
 
-	glowCheck = CreateCheckbox(settings, "Свечение", 16, -168)
+	glowCheck = CreateCheckbox(settings, L.GLOW, 16, -168)
 	glowCheck:SetScript("OnClick", function(self)
 		SetGlowEnabled(self:GetChecked())
 	end)
@@ -486,7 +489,7 @@ local function CreateSettingsWindow()
 	local resetButton = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
 	resetButton:SetSize(100, 22)
 	resetButton:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -198)
-	resetButton:SetText("Сбросить")
+	resetButton:SetText(L.RESET)
 	resetButton:SetScript("OnClick", function()
 		database.point = DATABASE_DEFAULTS.point
 		database.relativePoint = DATABASE_DEFAULTS.relativePoint

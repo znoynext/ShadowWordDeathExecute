@@ -2,7 +2,12 @@
 -- This is deliberately not a general test framework or a replacement for a
 -- live Retail smoke test.
 
-local ADDON_PATH = "ShadowWordDeathExecute/ShadowWordDeathExecute.lua"
+local ADDON_DIRECTORY = "ShadowWordDeathExecute/"
+local LOCALE_PATHS = {
+	ADDON_DIRECTORY .. "Locales/enUS.lua",
+	ADDON_DIRECTORY .. "Locales/ruRU.lua",
+}
+local ADDON_PATH = ADDON_DIRECTORY .. "ShadowWordDeathExecute.lua"
 
 local function expect(condition, message)
 	if not condition then
@@ -213,7 +218,10 @@ local function newFrame(model, frameType, parent, template)
 	end
 
 	function frame:CreateFontString()
-		return newRegion()
+		local fontString = newRegion()
+		self.fontStrings = self.fontStrings or {}
+		table.insert(self.fontStrings, fontString)
+		return fontString
 	end
 
 	if template == "ActionButtonSpellAlertTemplate" then
@@ -235,7 +243,7 @@ local function trigger(indicator, event, unit)
 	indicator.scripts.OnEvent(indicator, event, unit)
 end
 
-local function boot(savedVariables, hasGlowTemplate)
+local function boot(savedVariables, hasGlowTemplate, locale)
 	local state = {
 		class = "PRIEST",
 		cooldown = { isActive = false, isOnGCD = false },
@@ -288,6 +296,9 @@ local function boot(savedVariables, hasGlowTemplate)
 	end
 	Enum = { LuaCurveType = { Step = 1 } }
 	GameFontNormal = {}
+	GetLocale = function()
+		return locale or "enUS"
+	end
 	geterrorhandler = function()
 		return function(message)
 			table.insert(model.errorReports, message)
@@ -327,12 +338,20 @@ local function boot(savedVariables, hasGlowTemplate)
 		return state.targetIsDead
 	end
 
-	dofile(ADDON_PATH)
+	local addon = {}
+	for _, path in ipairs(LOCALE_PATHS) do
+		local chunk, loadError = loadfile(path)
+		expect(chunk, loadError)
+		chunk("ShadowWordDeathExecute", addon)
+	end
+	local addonChunk, loadError = loadfile(ADDON_PATH)
+	expect(addonChunk, loadError)
+	addonChunk("ShadowWordDeathExecute", addon)
 
 	local indicator = model.frames[1]
 	expect(not indicator.shown, "startup must keep the indicator hidden")
 	trigger(indicator, "PLAYER_LOGIN")
-	return model, indicator
+	return model, indicator, addon
 end
 
 local function findGlowContainer(model, indicator)
@@ -351,6 +370,69 @@ local function setExecuteTarget(state)
 	state.usable = true
 	state.insufficientPower = false
 end
+
+local REQUIRED_LOCALE_KEYS = {
+	"TITLE",
+	"LOCK",
+	"TEST",
+	"SIZE",
+	"GLOW",
+	"RESET",
+}
+
+local function findSettings(model)
+	for _, frame in ipairs(model.frames) do
+		if frame.isSettingsWindow then
+			return frame
+		end
+	end
+end
+
+local function checkLocale(locale, expected)
+	local localeModel, _, addon = boot({}, true, locale)
+	local settings = findSettings(localeModel)
+	expect(settings, "settings UI must be created for " .. locale)
+
+	for _, key in ipairs(REQUIRED_LOCALE_KEYS) do
+		expect(addon.Locales.enUS[key], "enUS locale must contain " .. key)
+		expect(addon.Locales.ruRU[key], "ruRU locale must contain " .. key)
+	end
+
+	expect(settings.fontStrings[1].text == expected.TITLE, "settings title must use the selected locale")
+	expect(localeModel.checkboxes[1].fontStrings[1].text == expected.LOCK, "lock label must use the selected locale")
+	expect(localeModel.checkboxes[2].fontStrings[1].text == expected.TEST, "test label must use the selected locale")
+	expect(settings.fontStrings[2].text == expected.SIZE:format(48), "size label must use the selected locale format")
+	expect(localeModel.checkboxes[3].fontStrings[1].text == expected.GLOW, "glow label must use the selected locale")
+	local resetButton
+	for _, frame in ipairs(localeModel.frames) do
+		if frame.parent == settings and frame.template == "UIPanelButtonTemplate" then
+			resetButton = frame
+			break
+		end
+	end
+	expect(resetButton and resetButton.text == expected.RESET, "reset label must use the selected locale")
+end
+
+local enUS = {
+	TITLE = "Shadow Word: Death Execute",
+	LOCK = "Lock",
+	TEST = "Test",
+	SIZE = "Size: %d",
+	GLOW = "Glow",
+	RESET = "Reset",
+}
+local ruRU = {
+	TITLE = "Shadow Word: Death Execute",
+	LOCK = "Закрепить",
+	TEST = "Тест",
+	SIZE = "Размер: %d",
+	GLOW = "Свечение",
+	RESET = "Сбросить",
+}
+
+checkLocale("enUS", enUS)
+checkLocale("ruRU", ruRU)
+checkLocale("deDE", enUS)
 
 local model, indicator = boot({})
 local state = model.state

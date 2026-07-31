@@ -16,6 +16,7 @@ read_globals = {
 	"CreateFrame",
 	"Enum",
 	"GameFontNormal",
+	"GetLocale",
 	"geterrorhandler",
 	"issecretvalue",
 	"UIParent",

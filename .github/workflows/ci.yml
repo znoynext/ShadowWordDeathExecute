@@ -34,7 +34,7 @@ jobs:
 
       - name: Check Lua syntax
         run: |
-          luac5.1 -p ShadowWordDeathExecute/ShadowWordDeathExecute.lua
+          find ShadowWordDeathExecute -type f -name '*.lua' -print0 | xargs -0 -n1 luac5.1 -p
           luac5.1 -p scripts/model_checks.lua
 
       - name: Run execute-indicator model checks

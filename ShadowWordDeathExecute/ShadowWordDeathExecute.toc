@@ -1,8 +1,11 @@
 ## Interface: 120007
 ## Version: 1.2.2
 ## Title: Shadow Word: Death Execute
-## Notes: Shows Shadow Word: Death when the current hostile target is in execute range.
+## Notes: Shows Shadow Word: Death when a hostile target is in execute range.
+## Notes-ruRU: Показывает Shadow Word: Death, когда враждебная цель находится в диапазоне добивания.
 ## OptionalDeps: Blizzard_ActionBar
 ## SavedVariables: SWDExecuteDB
 
+Locales\enUS.lua
+Locales\ruRU.lua
 ShadowWordDeathExecute.lua
