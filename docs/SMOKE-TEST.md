@@ -27,7 +27,7 @@
 Проверьте:
 
 - `/swd` открывает окно;
-- Lock, Test, Size, Glow и Reset работают;
+- Lock, Test, ручные X/Y для Position и Size, Glow и Reset работают;
 - перемещение доступно только при Test ON и Lock OFF;
 - закрытие окна выключает Test;
 - position, size, lock и glow сохраняются после `/reload`;

@@ -5,7 +5,10 @@ addon.Locales.enUS = {
 	TITLE = "Shadow Word: Death Execute",
 	LOCK = "Lock",
 	TEST = "Test",
-	SIZE = "Size: %d",
+	POSITION = "Position",
+	X = "X:",
+	Y = "Y:",
+	SIZE = "Size",
 	GLOW = "Glow",
 	RESET = "Reset",
 }

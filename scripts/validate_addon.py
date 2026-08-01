@@ -21,13 +21,16 @@ LOCALE_FILES = {
     "enUS": "Locales/enUS.lua",
     "ruRU": "Locales/ruRU.lua",
 }
-REQUIRED_LOCALE_KEYS = {"TITLE", "LOCK", "TEST", "SIZE", "GLOW", "RESET"}
+REQUIRED_LOCALE_KEYS = {"TITLE", "LOCK", "TEST", "POSITION", "X", "Y", "SIZE", "GLOW", "RESET"}
 EXPECTED_LOCALES = {
     "enUS": {
         "TITLE": "Shadow Word: Death Execute",
         "LOCK": "Lock",
         "TEST": "Test",
-        "SIZE": "Size: %d",
+        "POSITION": "Position",
+        "X": "X:",
+        "Y": "Y:",
+        "SIZE": "Size",
         "GLOW": "Glow",
         "RESET": "Reset",
     },
@@ -35,7 +38,10 @@ EXPECTED_LOCALES = {
         "TITLE": "Shadow Word: Death Execute",
         "LOCK": "Закрепить",
         "TEST": "Тест",
-        "SIZE": "Размер: %d",
+        "POSITION": "Позиция",
+        "X": "X:",
+        "Y": "Y:",
+        "SIZE": "Размер",
         "GLOW": "Свечение",
         "RESET": "Сбросить",
     },
@@ -148,7 +154,10 @@ def validate_locales(entries: list[str], runtime: str, errors: list[str]) -> Non
         "title": "title:SetText(L.TITLE)",
         "lock": "CreateCheckbox(settings, L.LOCK",
         "test": "CreateCheckbox(settings, L.TEST",
-        "size": "sizeText:SetText(L.SIZE:format(size))",
+        "position": "CreateLabel(settings, L.POSITION",
+        "X coordinate": "CreateLabel(settings, L.X",
+        "Y coordinate": "CreateLabel(settings, L.Y",
+        "size": "CreateLabel(settings, L.SIZE",
         "glow": "CreateCheckbox(settings, L.GLOW",
         "reset": "resetButton:SetText(L.RESET)",
     }
@@ -186,6 +195,8 @@ def validate_source(errors: list[str]) -> None:
         "execute threshold": "local EXECUTE_THRESHOLD = 0.20",
         "Blizzard glow template": '"ActionButtonSpellAlertTemplate"',
         "boolean glow setting": "database.glowEnabled",
+        "manual size inputs": "SetIconSize(sizeXInput:GetText(), sizeYInput:GetText())",
+        "manual coordinate inputs": 'CreateFrame("EditBox", nil, parent, "InputBoxTemplate")',
         "fail-closed initialization guard": "if not addonInitialized then",
         "own cooldown excludes GCD": "cooldownInfo and cooldownInfo.isActive and not spellOnGCD",
         "charge-safe readiness": "return not ownSpellCooldownActive",
@@ -219,6 +230,8 @@ def validate_source(errors: list[str]) -> None:
     for obsolete_marker in ("GLOW_PULSE", "GLOW_STRONG", "CreatePulseAnimation", "UIDropDownMenu_"):
         if obsolete_marker in source:
             fail(errors, f"Obsolete glow architecture remains: {obsolete_marker}.")
+    if 'CreateFrame("Slider"' in source:
+        fail(errors, "Settings must not reintroduce a size slider.")
 
     indicator_start = source.find('local indicator = CreateFrame("Frame", nil, UIParent)')
     early_hide = source.find("indicator:Hide()", indicator_start)

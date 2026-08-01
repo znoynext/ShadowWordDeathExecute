@@ -5,7 +5,10 @@ addon.Locales.ruRU = {
 	TITLE = "Shadow Word: Death Execute",
 	LOCK = "Закрепить",
 	TEST = "Тест",
-	SIZE = "Размер: %d",
+	POSITION = "Позиция",
+	X = "X:",
+	Y = "Y:",
+	SIZE = "Размер",
 	GLOW = "Свечение",
 	RESET = "Сбросить",
 }

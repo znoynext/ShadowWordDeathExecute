@@ -80,8 +80,10 @@ local settings
 local lockedCheck
 local testCheck
 local glowCheck
-local sizeText
-local sizeSlider
+local xInput
+local yInput
+local sizeXInput
+local sizeYInput
 local testMode = false
 local ownSpellCooldownActive = false
 local spellOnGCD = false
@@ -110,7 +112,12 @@ local function InitializeDatabase()
 	database.relativePoint = validPoints[database.relativePoint] and database.relativePoint or DATABASE_DEFAULTS.relativePoint
 	database.x = ClampNumber(database.x, -MAX_OFFSET, MAX_OFFSET, DATABASE_DEFAULTS.x)
 	database.y = ClampNumber(database.y, -MAX_OFFSET, MAX_OFFSET, DATABASE_DEFAULTS.y)
-	database.size = ClampNumber(database.size, MIN_SIZE, MAX_SIZE, DATABASE_DEFAULTS.size)
+	-- Versions before the manual size controls stored a single square size.
+	-- Preserve that choice by using it as the fallback for both dimensions.
+	local legacySize = ClampNumber(database.size, MIN_SIZE, MAX_SIZE, DATABASE_DEFAULTS.size)
+	database.width = math.floor(ClampNumber(database.width, MIN_SIZE, MAX_SIZE, legacySize))
+	database.height = math.floor(ClampNumber(database.height, MIN_SIZE, MAX_SIZE, legacySize))
+	database.size = nil
 	if type(database.locked) ~= "boolean" then
 		database.locked = DATABASE_DEFAULTS.locked
 	end
@@ -125,30 +132,51 @@ local function ApplySavedPosition()
 	indicator:SetPoint(database.point, UIParent, database.relativePoint, database.x, database.y)
 end
 
+local function UpdateSettingsInputs()
+	if xInput then
+		xInput:SetText(string.format("%.0f", database.x))
+	end
+	if yInput then
+		yInput:SetText(string.format("%.0f", database.y))
+	end
+	if sizeXInput then
+		sizeXInput:SetText(string.format("%d", database.width))
+	end
+	if sizeYInput then
+		sizeYInput:SetText(string.format("%d", database.height))
+	end
+end
+
 local function SavePosition()
 	local point, _, relativePoint, x, y = indicator:GetPoint()
 	database.point = point
 	database.relativePoint = relativePoint
 	database.x = x
 	database.y = y
+	UpdateSettingsInputs()
+end
+
+local function SetPosition(x, y)
+	database.x = ClampNumber(x, -MAX_OFFSET, MAX_OFFSET, database.x)
+	database.y = ClampNumber(y, -MAX_OFFSET, MAX_OFFSET, database.y)
+	ApplySavedPosition()
+	UpdateSettingsInputs()
 end
 
 local function UpdateGlowSize()
 	if blizzardGlow then
-		local size = indicator:GetWidth() * 1.4
-		blizzardGlow:SetSize(size, size)
+		blizzardGlow:SetSize(indicator:GetWidth() * 1.4, indicator:GetHeight() * 1.4)
 	end
 end
 
-local function SetIconSize(size)
-	size = math.floor(ClampNumber(size, MIN_SIZE, MAX_SIZE, DEFAULT_SIZE))
-	database.size = size
-	indicator:SetSize(size, size)
+local function SetIconSize(width, height)
+	width = math.floor(ClampNumber(width, MIN_SIZE, MAX_SIZE, DEFAULT_SIZE))
+	height = math.floor(ClampNumber(height, MIN_SIZE, MAX_SIZE, DEFAULT_SIZE))
+	database.width = width
+	database.height = height
+	indicator:SetSize(width, height)
 	UpdateGlowSize()
-
-	if sizeText then
-		sizeText:SetText(L.SIZE:format(size))
-	end
+	UpdateSettingsInputs()
 end
 
 local function StopBlizzardGlow()
@@ -406,6 +434,21 @@ local function CreateCheckbox(parent, label, x, y)
 	return checkbox
 end
 
+local function CreateEditBox(parent, x, y, width)
+	local input = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+	input:SetSize(width, 20)
+	input:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+	input:SetAutoFocus(false)
+	return input
+end
+
+local function CreateLabel(parent, text, x, y)
+	local label = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	label:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+	label:SetText(text)
+	return label
+end
+
 local function CloseSettings()
 	SetTestMode(false)
 	if settings then
@@ -419,7 +462,7 @@ local function CreateSettingsWindow()
 	end
 
 	settings = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-	settings:SetSize(270, 234)
+	settings:SetSize(270, 306)
 	settings:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 	settings:SetMovable(true)
 	settings:SetClampedToScreen(true)
@@ -457,55 +500,66 @@ local function CreateSettingsWindow()
 		SetTestMode(self:GetChecked())
 	end)
 
-	sizeText = settings:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	sizeText:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -112)
+	CreateLabel(settings, L.POSITION, 16, -112)
+	CreateLabel(settings, L.X, 16, -136)
+	xInput = CreateEditBox(settings, 34, -140, 72)
+	CreateLabel(settings, L.Y, 124, -136)
+	yInput = CreateEditBox(settings, 142, -140, 72)
 
-	sizeSlider = CreateFrame("Slider", nil, settings)
-	sizeSlider:SetSize(170, 16)
-	sizeSlider:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -138)
-	sizeSlider:SetOrientation("HORIZONTAL")
-	sizeSlider:SetMinMaxValues(MIN_SIZE, MAX_SIZE)
-	sizeSlider:SetValueStep(1)
-	sizeSlider:SetObeyStepOnDrag(true)
-	sizeSlider:SetThumbTexture("Interface/Buttons/UI-SliderBar-Button-Horizontal")
-	sizeSlider:GetThumbTexture():SetSize(16, 16)
-
-	local track = sizeSlider:CreateTexture(nil, "BACKGROUND")
-	track:SetColorTexture(0.25, 0.25, 0.25, 1)
-	track:SetPoint("LEFT", sizeSlider, "LEFT", 0, 0)
-	track:SetPoint("RIGHT", sizeSlider, "RIGHT", 0, 0)
-	track:SetHeight(6)
-
-	sizeSlider:SetScript("OnValueChanged", function(_, value)
-		SetIconSize(value)
+	local function ApplyPositionInputs()
+		SetPosition(xInput:GetText(), yInput:GetText())
+	end
+	xInput:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
 	end)
-	sizeSlider:SetValue(database.size)
+	xInput:SetScript("OnEditFocusLost", ApplyPositionInputs)
+	yInput:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+	end)
+	yInput:SetScript("OnEditFocusLost", ApplyPositionInputs)
 
-	glowCheck = CreateCheckbox(settings, L.GLOW, 16, -168)
+	CreateLabel(settings, L.SIZE, 16, -174)
+	CreateLabel(settings, L.X, 16, -198)
+	sizeXInput = CreateEditBox(settings, 34, -202, 72)
+	CreateLabel(settings, L.Y, 124, -198)
+	sizeYInput = CreateEditBox(settings, 142, -202, 72)
+
+	local function ApplySizeInputs()
+		SetIconSize(sizeXInput:GetText(), sizeYInput:GetText())
+	end
+	sizeXInput:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+	end)
+	sizeXInput:SetScript("OnEditFocusLost", ApplySizeInputs)
+	sizeYInput:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+	end)
+	sizeYInput:SetScript("OnEditFocusLost", ApplySizeInputs)
+
+	glowCheck = CreateCheckbox(settings, L.GLOW, 16, -232)
 	glowCheck:SetScript("OnClick", function(self)
 		SetGlowEnabled(self:GetChecked())
 	end)
 
 	local resetButton = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
 	resetButton:SetSize(100, 22)
-	resetButton:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -198)
+	resetButton:SetPoint("TOPLEFT", settings, "TOPLEFT", 16, -266)
 	resetButton:SetText(L.RESET)
 	resetButton:SetScript("OnClick", function()
 		database.point = DATABASE_DEFAULTS.point
 		database.relativePoint = DATABASE_DEFAULTS.relativePoint
 		database.x = DATABASE_DEFAULTS.x
 		database.y = DATABASE_DEFAULTS.y
-		database.size = DATABASE_DEFAULTS.size
 		ApplySavedPosition()
-		SetIconSize(DATABASE_DEFAULTS.size)
-		sizeSlider:SetValue(DATABASE_DEFAULTS.size)
+		SetIconSize(DATABASE_DEFAULTS.size, DATABASE_DEFAULTS.size)
+		UpdateSettingsInputs()
 	end)
 
 	settings:SetScript("OnShow", function()
 		lockedCheck:SetChecked(database.locked)
 		testCheck:SetChecked(testMode)
 		glowCheck:SetChecked(database.glowEnabled)
-		sizeSlider:SetValue(database.size)
+		UpdateSettingsInputs()
 	end)
 	settings:Hide()
 end
@@ -517,7 +571,7 @@ InitializeAddon = function()
 
 	InitializeDatabase()
 	ApplySavedPosition()
-	SetIconSize(database.size)
+	SetIconSize(database.width, database.height)
 	SetLocked(database.locked)
 	CreateSettingsWindow()
 	playerClass = select(2, UnitClass(PLAYER_UNIT))

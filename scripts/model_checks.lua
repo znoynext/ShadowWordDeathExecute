@@ -91,6 +91,10 @@ local function newFrame(model, frameType, parent, template)
 		return self.width
 	end
 
+	function frame:GetHeight()
+		return self.height
+	end
+
 	function frame:SetPoint(point, relativeTo, relativePoint, x, y)
 		self.point = { point, relativeTo, relativePoint, x, y }
 	end
@@ -140,6 +144,9 @@ local function newFrame(model, frameType, parent, template)
 
 	function frame:Show()
 		self.shown = true
+		if self.scripts and self.scripts.OnShow then
+			self.scripts.OnShow(self)
+		end
 	end
 
 	function frame:IsShown()
@@ -184,6 +191,18 @@ local function newFrame(model, frameType, parent, template)
 		self.value = value
 		if self.scripts and self.scripts.OnValueChanged then
 			self.scripts.OnValueChanged(self, value)
+		end
+	end
+
+	function frame:SetAutoFocus() end
+
+	function frame:GetText()
+		return self.text or ""
+	end
+
+	function frame:ClearFocus()
+		if self.scripts and self.scripts.OnEditFocusLost then
+			self.scripts.OnEditFocusLost(self)
 		end
 	end
 
@@ -375,6 +394,9 @@ local REQUIRED_LOCALE_KEYS = {
 	"TITLE",
 	"LOCK",
 	"TEST",
+	"POSITION",
+	"X",
+	"Y",
 	"SIZE",
 	"GLOW",
 	"RESET",
@@ -401,7 +423,10 @@ local function checkLocale(locale, expected)
 	expect(settings.fontStrings[1].text == expected.TITLE, "settings title must use the selected locale")
 	expect(localeModel.checkboxes[1].fontStrings[1].text == expected.LOCK, "lock label must use the selected locale")
 	expect(localeModel.checkboxes[2].fontStrings[1].text == expected.TEST, "test label must use the selected locale")
-	expect(settings.fontStrings[2].text == expected.SIZE:format(48), "size label must use the selected locale format")
+	expect(settings.fontStrings[2].text == expected.POSITION, "position label must use the selected locale")
+	expect(settings.fontStrings[3].text == expected.X, "X label must use the selected locale")
+	expect(settings.fontStrings[4].text == expected.Y, "Y label must use the selected locale")
+	expect(settings.fontStrings[5].text == expected.SIZE, "size label must use the selected locale")
 	expect(localeModel.checkboxes[3].fontStrings[1].text == expected.GLOW, "glow label must use the selected locale")
 	local resetButton
 	for _, frame in ipairs(localeModel.frames) do
@@ -417,7 +442,10 @@ local enUS = {
 	TITLE = "Shadow Word: Death Execute",
 	LOCK = "Lock",
 	TEST = "Test",
-	SIZE = "Size: %d",
+	POSITION = "Position",
+	X = "X:",
+	Y = "Y:",
+	SIZE = "Size",
 	GLOW = "Glow",
 	RESET = "Reset",
 }
@@ -425,7 +453,10 @@ local ruRU = {
 	TITLE = "Shadow Word: Death Execute",
 	LOCK = "Закрепить",
 	TEST = "Тест",
-	SIZE = "Размер: %d",
+	POSITION = "Позиция",
+	X = "X:",
+	Y = "Y:",
+	SIZE = "Размер",
 	GLOW = "Свечение",
 	RESET = "Сбросить",
 }
@@ -434,9 +465,28 @@ checkLocale("enUS", enUS)
 checkLocale("ruRU", ruRU)
 checkLocale("deDE", enUS)
 
-local model, indicator = boot({})
+local model, indicator = boot({ size = 40, x = 17, y = -23 })
 local state = model.state
 local icon = indicator.textures[1]
+SlashCmdList.SHADOWWORDDEATHEXECUTE()
+local inputs = {}
+for _, frame in ipairs(model.frames) do
+	if frame.frameType == "EditBox" then
+		table.insert(inputs, frame)
+	end
+end
+expect(#inputs == 4, "settings must create X/Y edit boxes for position and size")
+expect(inputs[1].text == "17" and inputs[2].text == "-23", "saved coordinates must populate the edit boxes")
+expect(inputs[3].text == "40" and inputs[4].text == "40", "legacy square size must migrate to separate size inputs")
+expect(SWDExecuteDB.size == nil and SWDExecuteDB.width == 40 and SWDExecuteDB.height == 40, "legacy size migration must persist dimensions")
+
+inputs[1]:SetText("32")
+inputs[1]:ClearFocus()
+expect(indicator.point[4] == 32 and indicator.point[5] == -23, "manual coordinates must update the indicator position")
+inputs[3]:SetText("64")
+inputs[4]:SetText("72")
+inputs[4]:ClearFocus()
+expect(indicator.width == 64 and indicator.height == 72, "manual width and height must update the indicator size")
 
 setExecuteTarget(state)
 trigger(indicator, "SPELL_UPDATE_COOLDOWN")
