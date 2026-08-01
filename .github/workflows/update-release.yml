@@ -10,35 +10,65 @@ permissions:
 
 jobs:
   release:
+    name: Package and publish immutable GitHub Release
     runs-on: ubuntu-latest
     steps:
       # actions/checkout@v5.1.0
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
 
-      - name: Build addon archive
-        id: build
+      - name: Verify release tag and immutable destination
+        id: preflight
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Tag must use vMAJOR.MINOR.PATCH format."
             exit 1
           fi
 
-          ARCHIVE="ShadowWordDeathExecute-${VERSION}.zip"
-          mkdir -p dist
-          zip -r "dist/${ARCHIVE}" ShadowWordDeathExecute
-          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+          TAG_COMMIT="$(git rev-list -n 1 "refs/tags/$TAG")"
+          test -n "$TAG_COMMIT"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" "origin/main"; then
+            echo "Refusing release: $TAG_COMMIT is not in origin/main history."
+            exit 1
+          fi
 
-      - name: Create or update release
+          if gh release view "$TAG" --json id >/dev/null 2>&1; then
+            echo "Refusing release: GitHub Release $TAG already exists."
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build release ZIP with BigWigs Packager
+        # BigWigsMods/packager@v2.5.1
+        uses: BigWigsMods/packager@6d50adb6e8517eefef63f4afb16a6518166a6b28
+        with:
+          args: -d
+          pandoc: false
+
+      - name: Validate packaged release ZIP
+        id: package
+        shell: bash
+        env:
+          TAG: ${{ steps.preflight.outputs.tag }}
+        run: |
+          ARCHIVE=".release/ShadowWordDeathExecute-${TAG}.zip"
+          test -f "$ARCHIVE"
+          python3 scripts/validate_addon.py --package "$ARCHIVE" --expected-version "$TAG"
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+
+      - name: Create immutable GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          ARCHIVE: ${{ steps.build.outputs.archive }}
+          TAG: ${{ steps.preflight.outputs.tag }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
         run: |
-          if gh release view "$GITHUB_REF_NAME"; then
-            gh release upload "$GITHUB_REF_NAME" "dist/${ARCHIVE}" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" "dist/${ARCHIVE}" --title "$GITHUB_REF_NAME" --generate-notes
-          fi
+          gh release create "$TAG" "$ARCHIVE" --verify-tag --title "$TAG" --generate-notes

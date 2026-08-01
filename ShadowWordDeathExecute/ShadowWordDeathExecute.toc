@@ -1,5 +1,5 @@
 ## Interface: 120007
-## Version: 1.2.2
+## Version: @project-version@
 ## Title: Shadow Word: Death Execute
 ## Notes: Shows Shadow Word: Death when a hostile target is in execute range.
 ## Notes-ruRU: Показывает Shadow Word: Death, когда враждебная цель находится в диапазоне добивания.

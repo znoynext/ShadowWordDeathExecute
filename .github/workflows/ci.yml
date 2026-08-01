@@ -6,7 +6,7 @@ on:
       - develop/v2
   pull_request:
     branches:
-      - develop/v2
+      - main
   workflow_dispatch:
 
 permissions:
@@ -58,7 +58,7 @@ jobs:
           fi
 
       - name: Validate addon invariants and TOC
-        run: python3 scripts/validate_addon.py
+        run: python3 scripts/validate_addon.py --release-workflow
 
   package:
     name: Package test ZIP

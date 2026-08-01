@@ -16,6 +16,7 @@ ADDON_DIR = ROOT / ADDON_NAME
 TOC_NAME = f"{ADDON_NAME}.toc"
 LUA_NAME = f"{ADDON_NAME}.lua"
 MODEL_CHECKS = ROOT / "scripts" / "model_checks.lua"
+RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "update-release.yml"
 LOCALE_FILES = {
     "enUS": "Locales/enUS.lua",
     "ruRU": "Locales/ruRU.lua",
@@ -173,6 +174,9 @@ def validate_source(errors: list[str]) -> None:
             fail(errors, f"TOC entry does not exist: {ADDON_NAME}/{entry}")
 
     source = lua.read_text(encoding="utf-8-sig")
+    toc_source = toc.read_text(encoding="utf-8-sig")
+    if "## Version: @project-version@" not in toc_source:
+        fail(errors, "TOC must use BigWigs Packager's @project-version@ substitution.")
     validate_locales(entries, source, errors)
     required_markers = {
         "slash command": 'SLASH_SHADOWWORDDEATHEXECUTE1 = "/swd"',
@@ -249,7 +253,7 @@ def validate_source(errors: list[str]) -> None:
         fail(errors, "Missing execute-indicator model regression checks.")
 
 
-def validate_package(archive: Path, errors: list[str]) -> None:
+def validate_package(archive: Path, expected_version: str | None, errors: list[str]) -> None:
     if not archive.is_file():
         fail(errors, f"Package archive does not exist: {archive}")
         return
@@ -276,16 +280,70 @@ def validate_package(archive: Path, errors: list[str]) -> None:
         if required not in package_names:
             fail(errors, f"Package is missing required runtime file: {required}")
 
+    packaged_toc = f"{ADDON_NAME}/{TOC_NAME}"
+    if packaged_toc in package_names:
+        with zipfile.ZipFile(archive) as package:
+            toc_text = package.read(packaged_toc).decode("utf-8-sig")
+        version_match = re.search(r"^## Version:\s*(.+)$", toc_text, re.MULTILINE)
+        if not version_match:
+            fail(errors, "Packaged TOC is missing a Version field.")
+        else:
+            version = version_match.group(1).strip()
+            if version == "@project-version@":
+                fail(errors, "Packaged TOC still contains an unresolved @project-version@ substitution.")
+            if expected_version and version != expected_version:
+                fail(
+                    errors,
+                    f"Packaged TOC version {version!r} does not match expected tag {expected_version!r}.",
+                )
+
+
+def validate_release_workflow(errors: list[str]) -> None:
+    if not RELEASE_WORKFLOW.is_file():
+        fail(errors, "Missing release workflow: .github/workflows/update-release.yml")
+        return
+
+    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    required_markers = {
+        "SemVer tag guard": '[[ ! "$TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
+        "main-history guard": 'git merge-base --is-ancestor "$TAG_COMMIT" "origin/main"',
+        "immutable release preflight": 'gh release view "$TAG" --json id',
+        "BigWigs Packager build": "uses: BigWigsMods/packager@",
+        "dry-run Packager mode": "args: -d",
+        "packaged version validation": '--expected-version "$TAG"',
+        "immutable release creation": 'gh release create "$TAG" "$ARCHIVE" --verify-tag',
+    }
+    for description, marker in required_markers.items():
+        if marker not in workflow:
+            fail(errors, f"Release workflow is missing {description}.")
+
+    for forbidden_marker in ("--clobber", "gh release upload", "zip -r"):
+        if forbidden_marker in workflow:
+            fail(errors, f"Release workflow contains forbidden mutable/manual packaging: {forbidden_marker}.")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, help="Validate a BigWigs Packager ZIP after source checks.")
+    parser.add_argument(
+        "--expected-version",
+        help="Require the packaged TOC version to match this release tag.",
+    )
+    parser.add_argument(
+        "--release-workflow",
+        action="store_true",
+        help="Validate release-automation guardrails.",
+    )
     args = parser.parse_args()
 
     errors: list[str] = []
     validate_source(errors)
     if args.package:
-        validate_package(args.package, errors)
+        validate_package(args.package, args.expected_version, errors)
+    elif args.expected_version:
+        fail(errors, "--expected-version requires --package.")
+    if args.release_workflow:
+        validate_release_workflow(errors)
 
     if errors:
         for error in errors:
