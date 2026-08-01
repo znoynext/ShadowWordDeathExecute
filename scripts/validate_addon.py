@@ -274,7 +274,11 @@ def validate_package(archive: Path, expected_version: str | None, errors: list[s
             fail(errors, f"Package contains a development file: {entry}")
 
     package_names = {entry.as_posix() for entry in entries}
-    required_files = [TOC_NAME, *toc_files(ADDON_DIR / TOC_NAME, errors)]
+    nested_addon_directory = f"{ADDON_NAME}/{ADDON_NAME}/"
+    if any(name.startswith(nested_addon_directory) for name in package_names):
+        fail(errors, "Package contains an extra nested addon directory.")
+
+    required_files = [TOC_NAME, "CHANGELOG.md", *toc_files(ADDON_DIR / TOC_NAME, errors)]
     for required_file in required_files:
         required = f"{ADDON_NAME}/{required_file}"
         if required not in package_names:

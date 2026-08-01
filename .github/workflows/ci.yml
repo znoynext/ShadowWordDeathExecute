@@ -61,7 +61,7 @@ jobs:
         run: python3 scripts/validate_addon.py --release-workflow
 
   package:
-    name: Package test ZIP
+    name: Package RC ZIP
     needs: validate
     runs-on: ubuntu-latest
     steps:
@@ -69,6 +69,9 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
+
+      - name: Stage changelog in addon directory
+        run: cp CHANGELOG.md ShadowWordDeathExecute/CHANGELOG.md
 
       - name: Build dry-run package
         # BigWigsMods/packager@v2.5.1
@@ -85,12 +88,21 @@ jobs:
           python3 scripts/validate_addon.py --package "$archive"
           mkdir -p dist
           cp "$archive" dist/
+          checksum="$(sha256sum "$archive")"
+          printf '%s\n' "$checksum" > "dist/$(basename "$archive").sha256"
 
-      - name: Upload test ZIP
+      - name: Set RC artifact name
+        id: rc
+        shell: bash
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload RC ZIP
         # actions/upload-artifact@v7.0.1
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ShadowWordDeathExecute-test-${{ github.sha }}
-          path: dist/*.zip
+          name: ShadowWordDeathExecute-RC-${{ steps.rc.outputs.short_sha }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
           if-no-files-found: error
           retention-days: 14
