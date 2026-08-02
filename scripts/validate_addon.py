@@ -378,6 +378,7 @@ def validate_ci_workflow(errors: list[str]) -> None:
         "SemVer simulation guard": '[[ ! "$SIMULATE_VERSION" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
         "ephemeral simulation tag": 'git tag -a "$SIMULATE_VERSION"',
         "simulated package version validation": '--expected-version "$EXPECTED_VERSION"',
+        "manual-dispatch whitespace fallback": '[[ "${{ github.event_name }}" == "push" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]',
     }
     for description, marker in required_markers.items():
         if marker not in workflow:
