@@ -350,6 +350,12 @@ local function IsSpellReadyNow()
 	return not ownSpellCooldownActive
 end
 
+local function IsShadowWordDeathLearned()
+	-- Shadow Word: Death is a selectable Priest talent. Spell usability alone
+	-- does not prove that this exact talent is currently selected.
+	return C_SpellBook.IsSpellKnown(SPELL_ID)
+end
+
 local function WatchSpellCooldown()
 	local duration = GetOwnSpellCooldownDuration()
 	if not duration then
@@ -369,6 +375,11 @@ UpdateIndicator = function()
 		return
 	end
 
+	if playerClass ~= PRIEST_CLASS or not IsShadowWordDeathLearned() then
+		HideIndicator()
+		return
+	end
+
 	if testMode then
 		icon:SetDesaturated(false)
 		icon:SetAlpha(1)
@@ -379,7 +390,7 @@ UpdateIndicator = function()
 		return
 	end
 
-	if not UnitAffectingCombat(PLAYER_UNIT) or playerClass ~= PRIEST_CLASS or not IsHostileLivingTarget() then
+	if not UnitAffectingCombat(PLAYER_UNIT) or not IsHostileLivingTarget() then
 		HideIndicator()
 		return
 	end
@@ -396,25 +407,22 @@ UpdateIndicator = function()
 		return
 	end
 
+	local usable, insufficientPower = C_Spell.IsSpellUsable(SPELL_ID)
+	if not usable and not (spellOnGCD and not insufficientPower) then
+		HideIndicator()
+		WatchSpellCooldown()
+		return
+	end
+
 	ApplyExecuteHealthAlpha()
 	icon:SetDesaturated(false)
+	icon:Show()
 	indicator:Show()
 	ShowGlow()
 
-	-- Cooldown and GCD are handled above. Preserve learned/resource usability.
-	local usable, insufficientPower = C_Spell.IsSpellUsable(SPELL_ID)
-	icon:SetShown(usable)
 	if database.glowEnabled then
 		-- Keep glow and icon synchronized through the same visual-safe operation.
-		glowContainer:SetShown(usable)
-	end
-	if spellOnGCD and not insufficientPower then
-		-- The cooldown-event cache proves that the spell cooldown is GCD-only.
-		-- Keep the documented insufficient-power usability gate intact.
-		icon:Show()
-		if database.glowEnabled then
-			glowContainer:Show()
-		end
+		glowContainer:Show()
 	end
 	WatchSpellCooldown()
 end
@@ -629,6 +637,8 @@ indicator:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 indicator:RegisterEvent("SPELL_UPDATE_USABLE")
 indicator:RegisterEvent("SPELL_UPDATE_CHARGES")
 indicator:RegisterEvent("SPELLS_CHANGED")
+indicator:RegisterEvent("TRAIT_CONFIG_UPDATED")
+indicator:RegisterEvent("ACTIVE_COMBAT_CONFIG_CHANGED")
 
 local targetEvents = {
 	UNIT_HEALTH = true,

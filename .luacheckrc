@@ -12,6 +12,7 @@ read_globals = {
 	"CallErrorHandler",
 	"C_CurveUtil",
 	"C_Spell",
+	"C_SpellBook",
 	"CreateColor",
 	"CreateFrame",
 	"Enum",

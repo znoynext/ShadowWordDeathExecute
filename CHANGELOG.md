@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Shows the indicator only when the Shadow Word: Death talent is selected and the spell is usable.
+
 ## 1.3.0
 
 - Added manual Position X/Y controls in the `/swd` settings.

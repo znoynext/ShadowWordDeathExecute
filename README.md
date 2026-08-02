@@ -7,6 +7,7 @@ A lightweight World of Warcraft Retail addon for a Priest character that shows a
 ## Features
 
 - Shows Shadow Word: Death in execute range.
+- Requires the Shadow Word: Death talent to be selected.
 - Works only in combat and requires a hostile living target.
 - Uses the 20% execute threshold.
 - Respects Shadow Word: Death's own cooldown.

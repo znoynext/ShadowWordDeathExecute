@@ -216,6 +216,7 @@ def validate_source(errors: list[str]) -> None:
         "fail-closed initialization guard": "if not addonInitialized then",
         "own cooldown excludes GCD": "cooldownInfo and cooldownInfo.isActive and not spellOnGCD",
         "charge-safe readiness": "return not ownSpellCooldownActive",
+        "selected talent gate": "C_SpellBook.IsSpellKnown(SPELL_ID)",
         "core callback wrapper": "local function RunCoreCallback(callback, ...)",
         "pre-unwind error reporting": "return xpcall(invoke, ReportCoreError)",
         "Retail stack-aware reporting": "pcall(CallErrorHandler, message)",
@@ -256,9 +257,14 @@ def validate_source(errors: list[str]) -> None:
         fail(errors, "indicator:Hide() must remain immediately in the early UI initialization path.")
 
     test_mode = source.find("if testMode then")
+    talent_gate = source.find("if playerClass ~= PRIEST_CLASS or not IsShadowWordDeathLearned() then")
     combat_gate = source.find("UnitAffectingCombat(PLAYER_UNIT)")
-    if test_mode == -1 or combat_gate == -1 or test_mode > combat_gate:
-        fail(errors, "Test mode must bypass the combat and target gates.")
+    if test_mode == -1 or talent_gate == -1 or combat_gate == -1 or not talent_gate < test_mode < combat_gate:
+        fail(errors, "Talent gating must precede Test mode, which must still bypass combat and target gates.")
+
+    for event in ("TRAIT_CONFIG_UPDATED", "ACTIVE_COMBAT_CONFIG_CHANGED"):
+        if f'indicator:RegisterEvent("{event}")' not in source:
+            fail(errors, f"Missing talent-change event: {event}.")
 
     own_cooldown = source.find("if not IsSpellReadyNow() then")
     own_cooldown_hide = source.find("HideIndicator()", own_cooldown)

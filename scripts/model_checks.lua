@@ -270,6 +270,7 @@ local function boot(savedVariables, hasGlowTemplate, locale)
 		healthMaximum = 100,
 		inCombat = false,
 		insufficientPower = false,
+		spellKnown = true,
 		targetExists = false,
 		targetIsDead = false,
 		usable = true,
@@ -301,6 +302,11 @@ local function boot(savedVariables, hasGlowTemplate, locale)
 		end,
 		IsSpellUsable = function()
 			return state.usable, state.insufficientPower
+		end,
+	}
+	C_SpellBook = {
+		IsSpellKnown = function()
+			return state.spellKnown
 		end,
 	}
 	CreateColor = function(red, green, blue, alpha)
@@ -517,12 +523,28 @@ state.usable = true
 trigger(indicator, "SPELL_UPDATE_COOLDOWN")
 expect(indicator.shown, "a recharge DurationObject with an available charge must stay usable")
 
+state.spellKnown = false
+trigger(indicator, "TRAIT_CONFIG_UPDATED")
+expect(not indicator.shown, "unselected Shadow Word: Death talent must hide the indicator")
+
+state.spellKnown = true
+trigger(indicator, "ACTIVE_COMBAT_CONFIG_CHANGED")
+expect(indicator.shown, "learning Shadow Word: Death must restore the indicator immediately")
+
 state.inCombat = false
 state.targetExists = false
 local testCheckbox = model.checkboxes[2]
 testCheckbox:SetChecked(true)
 testCheckbox.scripts.OnClick(testCheckbox)
 expect(indicator.shown and icon.shown, "test mode must bypass combat and target gates")
+
+state.spellKnown = false
+trigger(indicator, "TRAIT_CONFIG_UPDATED")
+expect(not indicator.shown, "test mode must not show an unselected Shadow Word: Death talent")
+
+state.spellKnown = true
+trigger(indicator, "TRAIT_CONFIG_UPDATED")
+expect(indicator.shown and icon.shown, "test mode must recover after Shadow Word: Death is learned")
 
 for legacyGlow, expectedEnabled in pairs({ none = false, blizzard = true, pulse = true, strong = true }) do
 	local database = { glow = legacyGlow }
