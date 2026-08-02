@@ -53,6 +53,12 @@
 - Повторите проверку с отключёнными другими аддонами.
 - Если проблема осталась, [создайте GitHub issue](https://github.com/znoynext/ShadowWordDeathExecute/issues).
 
+## Лицензия
+
+**License:** All Rights Reserved. Copyright © 2026 znoynext. Проект является проприетарным:
+копирование, изменение, распространение, повторная публикация, форки и
+производные работы требуют предварительного письменного разрешения znoynext.
+
 ## Разработка
 
 `main` — production-ветка. `develop/v2` — development-ветка. GitHub Actions собирает test ZIP для development- и pull request-проверок.

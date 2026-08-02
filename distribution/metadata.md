@@ -48,3 +48,9 @@ This event-driven addon provides a compact Shadow Word: Death execute indicator.
 
 - Repository: https://github.com/znoynext/ShadowWordDeathExecute
 - Issues: https://github.com/znoynext/ShadowWordDeathExecute/issues
+
+## License
+
+License: All Rights Reserved. This proprietary project may not be copied, modified,
+distributed, republished, forked, or used to create derivative works without
+prior written permission from znoynext.

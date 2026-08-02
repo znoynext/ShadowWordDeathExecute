@@ -5,15 +5,14 @@ a GitHub Release, an upload, or marketplace publication.
 
 ## Owner-supplied values
 
-Do not invent these values. The owner must select a license before submitting
-the project for moderation.
+Do not invent the project IDs.
 
 | Value | Owner fills in |
 | --- | --- |
 | CurseForge project ID |  |
 | Wago Addons project ID |  |
 | WoWInterface addon ID |  |
-| Selected license |  |
+| Selected license | All Rights Reserved |
 
 Future automated uploads also need GitHub Actions secrets after the projects
 exist:
@@ -104,7 +103,7 @@ external runtime libraries.
 | Suggested tags | WoW Retail, Priest, Shadow Word: Death, Execute, Combat |
 | Source repository | https://github.com/znoynext/ShadowWordDeathExecute |
 | Issue tracker | https://github.com/znoynext/ShadowWordDeathExecute/issues |
-| License | Owner must choose before moderation. |
+| License | All Rights Reserved |
 
 ### Wago Addons
 
@@ -120,7 +119,7 @@ external runtime libraries.
 | Suggested tags | Retail, Priest, Shadow Word: Death, Execute, Combat |
 | Source repository | https://github.com/znoynext/ShadowWordDeathExecute |
 | Issue tracker | https://github.com/znoynext/ShadowWordDeathExecute/issues |
-| License | Owner must choose before moderation. |
+| License | All Rights Reserved |
 
 ### WoWInterface
 
@@ -137,7 +136,7 @@ external runtime libraries.
 | Suggested tags | Retail, Priest, Shadow Word: Death, Execute, Combat |
 | Source repository | https://github.com/znoynext/ShadowWordDeathExecute |
 | Issue tracker | https://github.com/znoynext/ShadowWordDeathExecute/issues |
-| License | Owner must choose before moderation. |
+| License | All Rights Reserved |
 
 ## Screenshots the owner should capture
 

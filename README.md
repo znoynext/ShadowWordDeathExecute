@@ -53,6 +53,12 @@ Designed for World of Warcraft Retail and Priest characters using Shadow Word: D
 - Try again with other addons disabled.
 - [Open a GitHub issue](https://github.com/znoynext/ShadowWordDeathExecute/issues) if the problem remains.
 
+## License
+
+**License:** All Rights Reserved. Copyright © 2026 znoynext. This project is proprietary;
+copying, modifying, distributing, republishing, forking, or creating
+derivative works requires prior written permission from znoynext.
+
 ## Development
 
 `main` is the production branch. `develop/v2` is the development branch. GitHub Actions builds a test ZIP for development and pull request checks.
