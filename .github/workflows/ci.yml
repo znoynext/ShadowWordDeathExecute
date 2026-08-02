@@ -3,11 +3,16 @@ name: Development CI
 on:
   push:
     branches:
-      - develop/v2
+      - main
   pull_request:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      simulate_version:
+        description: "Optional local-only SemVer tag to test Packager substitution."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -73,6 +78,18 @@ jobs:
       - name: Stage changelog in addon directory
         run: cp CHANGELOG.md ShadowWordDeathExecute/CHANGELOG.md
 
+      - name: Simulate a release tag for a manual package check
+        if: ${{ inputs.simulate_version != '' }}
+        shell: bash
+        env:
+          SIMULATE_VERSION: ${{ inputs.simulate_version }}
+        run: |
+          if [[ ! "$SIMULATE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "simulate_version must use vMAJOR.MINOR.PATCH format."
+            exit 1
+          fi
+          git tag -a "$SIMULATE_VERSION" -m "Temporary CI package simulation"
+
       - name: Build dry-run package
         # BigWigsMods/packager@v2.5.1
         uses: BigWigsMods/packager@6d50adb6e8517eefef63f4afb16a6518166a6b28
@@ -82,10 +99,16 @@ jobs:
 
       - name: Validate installable ZIP
         shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.simulate_version }}
         run: |
           archive="$(find .release -maxdepth 1 -type f -name '*.zip' -print -quit)"
           test -n "$archive"
-          python3 scripts/validate_addon.py --package "$archive"
+          if [[ -n "$EXPECTED_VERSION" ]]; then
+            python3 scripts/validate_addon.py --package "$archive" --expected-version "$EXPECTED_VERSION"
+          else
+            python3 scripts/validate_addon.py --package "$archive"
+          fi
           mkdir -p dist
           cp "$archive" dist/
           checksum="$(sha256sum "$archive")"

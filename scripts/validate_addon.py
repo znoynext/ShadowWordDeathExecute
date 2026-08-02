@@ -17,6 +17,8 @@ TOC_NAME = f"{ADDON_NAME}.toc"
 LUA_NAME = f"{ADDON_NAME}.lua"
 MODEL_CHECKS = ROOT / "scripts" / "model_checks.lua"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "update-release.yml"
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+INTERFACE_WORKFLOW = ROOT / ".github" / "workflows" / "update-interface.yml"
 LOCALE_FILES = {
     "enUS": "Locales/enUS.lua",
     "ruRU": "Locales/ruRU.lua",
@@ -90,6 +92,21 @@ def toc_files(toc: Path, errors: list[str]) -> list[str]:
         fail(errors, "TOC does not list any addon files.")
 
     return files
+
+
+def validate_interface_versions(toc_text: str, errors: list[str], context: str) -> None:
+    matches = re.findall(r"^## Interface:\s*(.+?)\s*$", toc_text, re.MULTILINE)
+    if len(matches) != 1:
+        fail(errors, f"{context} must contain exactly one Interface field.")
+        return
+
+    versions = [version.strip() for version in matches[0].split(",")]
+    if len(versions) < 2:
+        fail(errors, f"{context} must include both Retail and PTR Interface versions.")
+    if not all(re.fullmatch(r"\d{6}", version) for version in versions):
+        fail(errors, f"{context} has an invalid comma-separated Interface value.")
+    if len(set(versions)) != len(versions):
+        fail(errors, f"{context} must not repeat an Interface version.")
 
 
 def parse_locale(locale: str, errors: list[str]) -> dict[str, str]:
@@ -186,6 +203,7 @@ def validate_source(errors: list[str]) -> None:
     toc_source = toc.read_text(encoding="utf-8-sig")
     if "## Version: @project-version@" not in toc_source:
         fail(errors, "TOC must use BigWigs Packager's @project-version@ substitution.")
+    validate_interface_versions(toc_source, errors, "Source TOC")
     validate_locales(entries, source, errors)
     required_markers = {
         "slash command": 'SLASH_SHADOWWORDDEATHEXECUTE1 = "/swd"',
@@ -301,6 +319,7 @@ def validate_package(archive: Path, expected_version: str | None, errors: list[s
     if packaged_toc in package_names:
         with zipfile.ZipFile(archive) as package:
             toc_text = package.read(packaged_toc).decode("utf-8-sig")
+        validate_interface_versions(toc_text, errors, "Packaged TOC")
         version_match = re.search(r"^## Version:\s*(.+)$", toc_text, re.MULTILINE)
         if not version_match:
             fail(errors, "Packaged TOC is missing a Version field.")
@@ -328,6 +347,13 @@ def validate_release_workflow(errors: list[str]) -> None:
         "BigWigs Packager build": "uses: BigWigsMods/packager@",
         "dry-run Packager mode": "args: -d",
         "packaged version validation": '--expected-version "$TAG"',
+        "marketplace project IDs": "-p ${{ vars.CF_PROJECT_ID }}",
+        "Wago project ID": "-a ${{ vars.WAGO_PROJECT_ID }}",
+        "WoWInterface addon ID": "-w ${{ vars.WOWI_PROJECT_ID }}",
+        "CurseForge secret mapping": "CF_API_KEY: ${{ secrets.CF_API_TOKEN }}",
+        "Wago secret": "WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}",
+        "WoWInterface secret": "WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}",
+        "missing deployment configuration guard": "configure the required GitHub Actions variables/secrets",
         "immutable release creation": 'gh release create "$TAG" "$ARCHIVE" --verify-tag',
     }
     for description, marker in required_markers.items():
@@ -337,6 +363,52 @@ def validate_release_workflow(errors: list[str]) -> None:
     for forbidden_marker in ("--clobber", "gh release upload", "zip -r"):
         if forbidden_marker in workflow:
             fail(errors, f"Release workflow contains forbidden mutable/manual packaging: {forbidden_marker}.")
+
+
+def validate_ci_workflow(errors: list[str]) -> None:
+    if not CI_WORKFLOW.is_file():
+        fail(errors, "Missing development CI workflow: .github/workflows/ci.yml")
+        return
+
+    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    required_markers = {
+        "main push trigger": "  push:\n    branches:\n      - main",
+        "main PR trigger": "  pull_request:\n    branches:\n      - main",
+        "manual package simulation": "simulate_version:",
+        "SemVer simulation guard": '[[ ! "$SIMULATE_VERSION" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
+        "ephemeral simulation tag": 'git tag -a "$SIMULATE_VERSION"',
+        "simulated package version validation": '--expected-version "$EXPECTED_VERSION"',
+    }
+    for description, marker in required_markers.items():
+        if marker not in workflow:
+            fail(errors, f"Development CI is missing {description}.")
+    if "develop/v2" in workflow:
+        fail(errors, "Development CI must not retain develop/v2 as an active branch.")
+
+
+def validate_interface_workflow(errors: list[str]) -> None:
+    if not INTERFACE_WORKFLOW.is_file():
+        fail(errors, "Missing Interface updater workflow: .github/workflows/update-interface.yml")
+        return
+
+    workflow = INTERFACE_WORKFLOW.read_text(encoding="utf-8")
+    required_markers = {
+        "scheduled trigger": "  schedule:",
+        "manual trigger": "  workflow_dispatch:",
+        "main PR base": "base: main",
+        "Retail flavor": "flavor: retail",
+        "PTR support": "ptr: true",
+        "pinned Interface updater": "p3lim/toc-interface-updater@118fd5125c8604306fc8652bfcb5dd80e8899f63",
+        "pinned PR action": "peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676",
+        "temporary automation branch": "branch: automation/interface-version",
+        "temporary branch cleanup": "delete-branch: true",
+        "TOC-only scope": "add-paths: ShadowWordDeathExecute/ShadowWordDeathExecute.toc",
+    }
+    for description, marker in required_markers.items():
+        if marker not in workflow:
+            fail(errors, f"Interface updater workflow is missing {description}.")
+    if "develop/v2" in workflow:
+        fail(errors, "Interface updater must target main, not develop/v2.")
 
 
 def main() -> int:
@@ -361,6 +433,8 @@ def main() -> int:
         fail(errors, "--expected-version requires --package.")
     if args.release_workflow:
         validate_release_workflow(errors)
+        validate_ci_workflow(errors)
+        validate_interface_workflow(errors)
 
     if errors:
         for error in errors:

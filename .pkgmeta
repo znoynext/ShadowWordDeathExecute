@@ -1,5 +1,8 @@
 package-as: ShadowWordDeathExecute
 
+# Preserve prior WoWInterface downloads when Packager uploads a newer file.
+wowi-archive-previous: yes
+
 move-folders:
   ShadowWordDeathExecute/ShadowWordDeathExecute: ShadowWordDeathExecute
 

@@ -12,3 +12,4 @@
 - Hardened runtime handling so unexpected errors fail closed and reach WoW's standard Lua error handler.
 - Added English and Russian localization.
 - Added CI, model, static, and package validation improvements.
+- Added automated Retail/PTR Interface update PRs and immutable tag-based release publishing.

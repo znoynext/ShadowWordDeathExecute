@@ -4,7 +4,7 @@
 
 | Item | Value |
 | --- | --- |
-| Addon revision | `develop/v2` at `06f1cfd803bc5de73941d31cc3da7413edd0fdfe` |
+| Historical source revision | `06f1cfd803bc5de73941d31cc3da7413edd0fdfe` |
 | WoW product | World of Warcraft Retail (Mainline), Midnight |
 | UI-source build | `12.0.7.68887` |
 | TOC Interface | `120007` |

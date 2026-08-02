@@ -61,4 +61,4 @@
 
 ## Разработка
 
-`main` — production-ветка. `develop/v2` — development-ветка. GitHub Actions собирает test ZIP для development- и pull request-проверок.
+`main` — единственная постоянная ветка. GitHub Actions проверяет push и pull request в `main`, собирает test ZIP и создаёт PR для проверки обновлённых Retail/PTR значений Interface.

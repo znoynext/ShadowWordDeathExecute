@@ -21,9 +21,11 @@ exist:
 | --- | --- | --- |
 | CF_API_TOKEN | CurseForge upload API | Yes |
 | WAGO_API_TOKEN | Wago Addons upload API | Yes |
+| WOWI_API_TOKEN | WoWInterface upload API | Yes |
 
-No WoWInterface upload secret is planned; use that site's normal manual upload
-flow unless the owner explicitly authorizes a supported automation method.
+Automated marketplace publishing is enabled only for a new SemVer tag from
+`main` after all three real project IDs and all three secrets are configured.
+See `distribution/DEPLOY.md` for the exact setup and release sequence.
 
 ## Shared listing text
 

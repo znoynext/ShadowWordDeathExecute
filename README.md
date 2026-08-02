@@ -61,4 +61,4 @@ derivative works requires prior written permission from znoynext.
 
 ## Development
 
-`main` is the production branch. `develop/v2` is the development branch. GitHub Actions builds a test ZIP for development and pull request checks.
+`main` is the only permanent branch. GitHub Actions validates pushes and pull requests to `main`, builds a test ZIP, and opens a reviewable PR when the Retail/PTR Interface values change.
