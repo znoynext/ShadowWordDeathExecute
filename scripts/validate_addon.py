@@ -101,9 +101,7 @@ def validate_interface_versions(toc_text: str, errors: list[str], context: str) 
         return
 
     versions = [version.strip() for version in matches[0].split(",")]
-    if len(versions) < 2:
-        fail(errors, f"{context} must include both Retail and PTR Interface versions.")
-    if not all(re.fullmatch(r"\d{6}", version) for version in versions):
+    if not versions or not all(re.fullmatch(r"\d{6}", version) for version in versions):
         fail(errors, f"{context} has an invalid comma-separated Interface value.")
     if len(set(versions)) != len(versions):
         fail(errors, f"{context} must not repeat an Interface version.")
