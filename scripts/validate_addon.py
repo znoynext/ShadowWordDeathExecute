@@ -72,13 +72,14 @@ FORBIDDEN_PACKAGE_FILES = {
 
 SECRET_ASSIGNMENT = re.compile(
     r"""(?ix)
-    \b(?:cf|wago|wowi|github)[_-]?(?:api[_-]?)?(?:token|key)\b
+    \b(?:cf|wago|github)[_-]?(?:api[_-]?)?(?:token|key)\b
     \s*[:=]\s*
     (?!\$\{\{\s*secrets\.)
     [\"']?[A-Za-z0-9._-]{16,}
     """
 )
 GITHUB_TOKEN = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b")
+RETIRED_MARKETPLACE_MARKERS = ("WO" + "WI", "WoW" + "Interface")
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -357,20 +358,23 @@ def validate_release_workflow(errors: list[str]) -> None:
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     required_markers = {
         "SemVer tag guard": '[[ ! "$TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
+        "annotated tag guard": 'git cat-file -t "refs/tags/$TAG"',
         "main-history guard": 'git merge-base --is-ancestor "$TAG_COMMIT" "origin/main"',
         "immutable release preflight": 'gh release view "$TAG" --json id',
         "pinned BigWigs Packager": "BigWigsMods/packager@6d50adb6e8517eefef63f4afb16a6518166a6b28",
         "CurseForge preflight": "CurseForge: required configuration missing",
-        "CurseForge project ID": "args: -d -p ${{ vars.CF_PROJECT_ID }}",
+        "Wago preflight": "Wago: required configuration missing",
+        "CurseForge and Wago dry-run project IDs": "args: -d -p ${{ vars.CF_PROJECT_ID }} -a ${{ vars.WAGO_PROJECT_ID }}",
         "packaged version validation": '--expected-version "$TAG"',
-        "validated staging reuse": "args: -c -o ${{ steps.marketplaces.outputs.packager_args }}",
-        "CurseForge marketplace argument": 'packager_args="-p $CF_PROJECT_ID"',
-        "Wago optional skip": "Wago: skipped — not configured",
-        "WoWInterface optional skip": "WoWInterface: skipped — not configured",
+        "validated staging reuse": "args: -c -o -p ${{ vars.CF_PROJECT_ID }} -a ${{ vars.WAGO_PROJECT_ID }}",
+        "CurseForge marketplace argument": "-p ${{ vars.CF_PROJECT_ID }}",
+        "Wago marketplace argument": "-a ${{ vars.WAGO_PROJECT_ID }}",
         "CurseForge secret mapping": "CF_API_KEY: ${{ secrets.CF_API_TOKEN }}",
         "Wago secret": "WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}",
-        "WoWInterface secret": "WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}",
         "release source model check": "lua5.1 scripts/model_checks.lua",
+        "release source lint": "luacheck ShadowWordDeathExecute",
+        "release source formatting": "stylua --check ShadowWordDeathExecute scripts/model_checks.lua",
+        "release source whitespace": 'git diff --check "$GITHUB_SHA^!"',
         "validated package checksum": "sha256sum --check .release/verified-package.sha256",
         "immutable release creation": 'gh release create "$TAG" "$ARCHIVE" --verify-tag',
     }
@@ -390,9 +394,9 @@ def validate_release_workflow(errors: list[str]) -> None:
     if "GITHUB_OAUTH" in publish_block:
         fail(errors, "Marketplace Packager must not receive a GitHub upload token.")
 
-    for required_optional_arg in ('packager_args+=" -a $WAGO_PROJECT_ID"', 'packager_args+=" -w $WOWI_PROJECT_ID"'):
-        if required_optional_arg not in workflow:
-            fail(errors, "Optional marketplace arguments must only be added after paired configuration checks.")
+    for forbidden_marker in ("WO" + "WI", "WoW" + "Interface", "-w "):
+        if forbidden_marker in workflow:
+            fail(errors, f"Release workflow must not contain a removed marketplace reference: {forbidden_marker}.")
 
 
 def validate_ci_workflow(errors: list[str]) -> None:
@@ -418,7 +422,7 @@ def validate_ci_workflow(errors: list[str]) -> None:
             fail(errors, f"Development CI is missing {description}.")
     if "develop/v2" in workflow:
         fail(errors, "Development CI must not retain develop/v2 as an active branch.")
-    for marketplace_secret in ("CF_API_TOKEN", "WAGO_API_TOKEN", "WOWI_API_TOKEN"):
+    for marketplace_secret in ("CF_API_TOKEN", "WAGO_API_TOKEN"):
         if marketplace_secret in workflow:
             fail(errors, "Development CI must not receive marketplace secrets.")
 
@@ -446,6 +450,22 @@ def validate_interface_workflow(errors: list[str]) -> None:
             fail(errors, f"Interface updater workflow is missing {description}.")
     if "develop/v2" in workflow:
         fail(errors, "Interface updater must target main, not develop/v2.")
+
+
+def validate_distribution_scope(errors: list[str]) -> None:
+    for relative_path in (
+        Path(".github/workflows/update-release.yml"),
+        Path(".pkgmeta"),
+        Path("README.md"),
+        Path("README.ru.md"),
+        Path("docs/RELEASING.md"),
+        Path("distribution/DEPLOY.md"),
+        Path("distribution/marketplace-submission.md"),
+    ):
+        source = (ROOT / relative_path).read_text(encoding="utf-8")
+        for marker in RETIRED_MARKETPLACE_MARKERS:
+            if marker in source:
+                fail(errors, f"Retired marketplace reference found in: {relative_path.as_posix()}")
 
 
 def validate_secret_patterns(errors: list[str]) -> None:
@@ -504,6 +524,7 @@ def main() -> int:
         validate_release_workflow(errors)
         validate_ci_workflow(errors)
         validate_interface_workflow(errors)
+        validate_distribution_scope(errors)
     if args.secret_patterns:
         validate_secret_patterns(errors)
 

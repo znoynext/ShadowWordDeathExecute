@@ -3,30 +3,17 @@
 This file prepares the v1.3.0 listing text only. It does not authorize a tag,
 a GitHub Release, an upload, or marketplace publication.
 
-## Owner-supplied values
+## Publication configuration
 
-Do not invent the project IDs.
-
-| Value | Owner fills in |
+| Value | Configured value |
 | --- | --- |
-| CurseForge project ID |  |
-| Wago Addons project ID |  |
-| WoWInterface addon ID |  |
-| Selected license | All Rights Reserved |
+| CurseForge project ID | `1635549` |
+| Wago Addons project ID | `Q6aRxaKW` |
+| License | All Rights Reserved |
 
-CurseForge automated uploads require its configured GitHub Actions variable and
-secret. Wago Addons and WoWInterface are optional and require their own paired
-project ID and secret only when their automatic upload is enabled:
-
-| Secret | Purpose | Owner supplies |
-| --- | --- | --- |
-| CF_API_TOKEN | CurseForge upload API | Yes |
-| WAGO_API_TOKEN | Wago Addons upload API | Optional |
-| WOWI_API_TOKEN | WoWInterface upload API | Optional |
-
-Automated marketplace publishing is enabled only for a new SemVer tag from
-`main`. CurseForge must be configured; Wago Addons and WoWInterface are skipped
-until their real IDs and secrets are both configured. See
+CurseForge and Wago Addons automated uploads require their configured GitHub
+Actions variables and secrets. A new SemVer tag from `main` publishes to both
+services and creates the GitHub Release used by WowUp. See
 `distribution/DEPLOY.md` for the exact setup and release sequence.
 
 ## Shared listing text
@@ -103,7 +90,7 @@ external runtime libraries.
 | Features | Use Features above. |
 | Installation | Use Installation above. |
 | Changelog | Use Changelog: v1.3.0 above. |
-| Suggested categories | Combat; Class & Role Specific → Priest |
+| Suggested categories | Combat; Class & Role Specific -> Priest |
 | Suggested tags | WoW Retail, Priest, Shadow Word: Death, Execute, Combat |
 | Source repository | https://github.com/znoynext/ShadowWordDeathExecute |
 | Issue tracker | https://github.com/znoynext/ShadowWordDeathExecute/issues |
@@ -120,23 +107,6 @@ external runtime libraries.
 | Installation | Use Installation above. |
 | Changelog | Use Changelog: v1.3.0 above. |
 | Suggested categories | Combat; Priest/Class-specific, if the form offers it |
-| Suggested tags | Retail, Priest, Shadow Word: Death, Execute, Combat |
-| Source repository | https://github.com/znoynext/ShadowWordDeathExecute |
-| Issue tracker | https://github.com/znoynext/ShadowWordDeathExecute/issues |
-| License | All Rights Reserved |
-
-### WoWInterface
-
-| Field | Value |
-| --- | --- |
-| Addon name | Shadow Word: Death Execute |
-| Summary | A lightweight Shadow Word: Death execute indicator for World of Warcraft Retail Priests. |
-| Description | Use Full description above. |
-| Features | Use Features above. |
-| Installation | Use Installation above. |
-| Changelog | Use Changelog: v1.3.0 above. |
-| Suggested primary category | Combat Mods |
-| Suggested secondary category | Class & Role Specific → Priest, if offered |
 | Suggested tags | Retail, Priest, Shadow Word: Death, Execute, Combat |
 | Source repository | https://github.com/znoynext/ShadowWordDeathExecute |
 | Issue tracker | https://github.com/znoynext/ShadowWordDeathExecute/issues |

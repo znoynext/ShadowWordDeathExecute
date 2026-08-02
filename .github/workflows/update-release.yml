@@ -26,7 +26,7 @@ jobs:
           fetch-tags: true
           persist-credentials: false
 
-      - name: Verify release tag, CurseForge configuration, and immutable destination
+      - name: Verify release tag, marketplace configuration, and immutable destination
         id: preflight
         shell: bash
         env:
@@ -34,9 +34,16 @@ jobs:
           TAG: ${{ github.ref_name }}
           CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
           CF_API_KEY: ${{ secrets.CF_API_TOKEN }}
+          WAGO_PROJECT_ID: ${{ vars.WAGO_PROJECT_ID }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
         run: |
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Tag must use vMAJOR.MINOR.PATCH format."
+            exit 1
+          fi
+
+          if [[ "$(git cat-file -t "refs/tags/$TAG")" != "tag" ]]; then
+            echo "Refusing release: $TAG must be an annotated tag."
             exit 1
           fi
 
@@ -58,39 +65,22 @@ jobs:
             exit 1
           fi
 
+          if [[ -z "$WAGO_PROJECT_ID" || -z "$WAGO_API_TOKEN" ]]; then
+            echo "Wago: required configuration missing"
+            exit 1
+          fi
+
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Select optional marketplaces
-        id: marketplaces
-        shell: bash
-        env:
-          CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
-          WAGO_PROJECT_ID: ${{ vars.WAGO_PROJECT_ID }}
-          WOWI_PROJECT_ID: ${{ vars.WOWI_PROJECT_ID }}
-          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
-          WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
-        run: |
-          packager_args="-p $CF_PROJECT_ID"
-
-          if [[ -n "$WAGO_PROJECT_ID" && -n "$WAGO_API_TOKEN" ]]; then
-            packager_args+=" -a $WAGO_PROJECT_ID"
-            echo "Wago: enabled"
-          else
-            echo "Wago: skipped — not configured"
-          fi
-
-          if [[ -n "$WOWI_PROJECT_ID" && -n "$WOWI_API_TOKEN" ]]; then
-            packager_args+=" -w $WOWI_PROJECT_ID"
-            echo "WoWInterface: enabled"
-          else
-            echo "WoWInterface: skipped — not configured"
-          fi
-
-          printf 'packager_args=%s\n' "$packager_args" >> "$GITHUB_OUTPUT"
 
       - name: Install release validation runtime
         shell: bash
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends --yes lua5.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes lua5.1 luarocks
+          luarocks --lua-version=5.1 --local install luacheck 1.2.0
+          echo "$HOME/.luarocks/bin" >> "$GITHUB_PATH"
+          cargo install stylua --version 2.5.2 --locked
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Validate release source
         shell: bash
@@ -98,6 +88,9 @@ jobs:
           find ShadowWordDeathExecute -type f -name '*.lua' -print0 | xargs -0 -n1 luac5.1 -p
           luac5.1 -p scripts/model_checks.lua
           lua5.1 scripts/model_checks.lua
+          luacheck ShadowWordDeathExecute
+          stylua --check ShadowWordDeathExecute scripts/model_checks.lua
+          git diff --check "$GITHUB_SHA^!"
           python3 scripts/validate_addon.py --release-workflow --secret-patterns
 
       - name: Stage changelog in addon directory
@@ -107,7 +100,7 @@ jobs:
         # BigWigsMods/packager@v2.5.1
         uses: BigWigsMods/packager@6d50adb6e8517eefef63f4afb16a6518166a6b28
         with:
-          args: -d -p ${{ vars.CF_PROJECT_ID }}
+          args: -d -p ${{ vars.CF_PROJECT_ID }} -a ${{ vars.WAGO_PROJECT_ID }}
           pandoc: false
 
       - name: Validate packaged release ZIP
@@ -130,10 +123,9 @@ jobs:
           # Packager expects CF_API_KEY; the repository secret remains CF_API_TOKEN.
           CF_API_KEY: ${{ secrets.CF_API_TOKEN }}
           WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
-          WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
         with:
           # -c skips copying and -o keeps the package directory validated above.
-          args: -c -o ${{ steps.marketplaces.outputs.packager_args }}
+          args: -c -o -p ${{ vars.CF_PROJECT_ID }} -a ${{ vars.WAGO_PROJECT_ID }}
           pandoc: false
 
       - name: Confirm published ZIP still matches the validated package

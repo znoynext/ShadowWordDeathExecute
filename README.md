@@ -26,6 +26,15 @@ A lightweight World of Warcraft Retail addon for a Priest character that shows a
 3. Place it in `World of Warcraft/_retail_/Interface/AddOns`.
 4. Restart World of Warcraft or run `/reload`.
 
+### WowUp
+
+After the first stable GitHub Release, open **Get Addons** in WowUp, choose
+**Install from URL**, and enter:
+
+```text
+https://github.com/znoynext/ShadowWordDeathExecute
+```
+
 ## Usage
 
 Use `/swd` to open the compact settings window:
