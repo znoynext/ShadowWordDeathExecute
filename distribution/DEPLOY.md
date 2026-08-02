@@ -5,12 +5,15 @@ not authorize a tag, a GitHub Release, or an upload by itself.
 
 ## 1. Create the project pages
 
-Create one project owned by `znoynext` on each service, using the ready listing
-text in [marketplace-submission.md](marketplace-submission.md):
+CurseForge is required for a production release. Create its project owned by
+`znoynext`, using the ready listing text in
+[marketplace-submission.md](marketplace-submission.md):
 
 1. CurseForge — copy its numeric project ID from the project page.
-2. Wago Addons — copy the project ID from the developer dashboard.
-3. WoWInterface — copy the numeric addon ID from its URL (`info<ID>-...`).
+2. Optionally, create Wago Addons and copy its project ID from the developer
+   dashboard.
+3. Optionally, create WoWInterface and copy the numeric addon ID from its URL
+   (`info<ID>-...`).
 
 Keep the IDs out of the TOC and source code. They are repository configuration,
 not addon metadata. The project license is **All Rights Reserved**; do not mark
@@ -24,16 +27,16 @@ values below:
 | Repository variable | Value |
 | --- | --- |
 | `CF_PROJECT_ID` | CurseForge project ID |
-| `WAGO_PROJECT_ID` | Wago Addons project ID |
-| `WOWI_PROJECT_ID` | WoWInterface addon ID |
+| `WAGO_PROJECT_ID` | Wago Addons project ID (optional) |
+| `WOWI_PROJECT_ID` | WoWInterface addon ID (optional) |
 
 In **Settings → Secrets and variables → Actions → Secrets**, add the API tokens:
 
 | Secret | Used for |
 | --- | --- |
 | `CF_API_TOKEN` | CurseForge upload API |
-| `WAGO_API_TOKEN` | Wago Addons upload API |
-| `WOWI_API_TOKEN` | WoWInterface upload API |
+| `WAGO_API_TOKEN` | Wago Addons upload API (optional) |
+| `WOWI_API_TOKEN` | WoWInterface upload API (optional) |
 
 The CurseForge secret is deliberately mapped to BigWigs Packager's internal
 `CF_API_KEY` environment variable only inside the release job. Tokens are never
@@ -71,20 +74,24 @@ git push origin v1.3.0
 
 Only `vMAJOR.MINOR.PATCH` tags from `main` are accepted. The release job:
 
-1. verifies the tag format, `main` ancestry, required IDs/tokens, and the
+1. verifies the tag format, `main` ancestry, CurseForge configuration, and the
    absence of an existing GitHub Release;
 2. builds a dry-run ZIP with BigWigs Packager and validates it with
    `scripts/validate_addon.py`, including the exact version substituted from
    `@project-version@`;
-3. uploads with BigWigs Packager to CurseForge, Wago Addons, and WoWInterface;
-4. creates the GitHub Release without replacing any existing release or asset.
+3. uses the same validated Packager staging directory to upload to CurseForge;
+   Wago Addons and WoWInterface are uploaded only when each has both its ID and
+   API token configured;
+4. confirms the final ZIP still has the validated SHA-256, then creates the
+   GitHub Release without replacing any existing release or asset.
 
 WowUp consumes the GitHub Release ZIP. Existing WoWInterface downloads are
 archived rather than overwritten (`wowi-archive-previous: yes`).
 
-If an ID or token is missing, the preflight stops before packaging or any
-publication and prints the missing configuration keys. Do not add placeholders
-to bypass the check.
+If the CurseForge ID or token is missing, the job stops before packaging or
+publication with `CurseForge: required configuration missing`. If either
+optional service is incomplete, its upload is skipped and does not block the
+CurseForge or GitHub release. Do not add placeholders to bypass the check.
 
 ## Compatibility scope
 

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Shows the indicator only when the Shadow Word: Death talent is selected and the spell is usable.
+- Made CurseForge release publishing independent of optional Wago and WoWInterface configuration.
 
 ## 1.3.0
 

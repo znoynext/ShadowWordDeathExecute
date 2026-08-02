@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -68,6 +69,16 @@ FORBIDDEN_PACKAGE_FILES = {
     "README.ru.md",
     "stylua.toml",
 }
+
+SECRET_ASSIGNMENT = re.compile(
+    r"""(?ix)
+    \b(?:cf|wago|wowi|github)[_-]?(?:api[_-]?)?(?:token|key)\b
+    \s*[:=]\s*
+    (?!\$\{\{\s*secrets\.)
+    [\"']?[A-Za-z0-9._-]{16,}
+    """
+)
+GITHUB_TOKEN = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b")
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -313,7 +324,7 @@ def validate_package(archive: Path, expected_version: str | None, errors: list[s
     if any(name.startswith(nested_addon_directory) for name in package_names):
         fail(errors, "Package contains an extra nested addon directory.")
 
-    required_files = [TOC_NAME, "CHANGELOG.md", *toc_files(ADDON_DIR / TOC_NAME, errors)]
+    required_files = [TOC_NAME, "CHANGELOG.md", "LICENSE", *toc_files(ADDON_DIR / TOC_NAME, errors)]
     for required_file in required_files:
         required = f"{ADDON_NAME}/{required_file}"
         if required not in package_names:
@@ -348,16 +359,19 @@ def validate_release_workflow(errors: list[str]) -> None:
         "SemVer tag guard": '[[ ! "$TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
         "main-history guard": 'git merge-base --is-ancestor "$TAG_COMMIT" "origin/main"',
         "immutable release preflight": 'gh release view "$TAG" --json id',
-        "BigWigs Packager build": "uses: BigWigsMods/packager@",
-        "dry-run Packager mode": "args: -d",
+        "pinned BigWigs Packager": "BigWigsMods/packager@6d50adb6e8517eefef63f4afb16a6518166a6b28",
+        "CurseForge preflight": "CurseForge: required configuration missing",
+        "CurseForge project ID": "args: -d -p ${{ vars.CF_PROJECT_ID }}",
         "packaged version validation": '--expected-version "$TAG"',
-        "marketplace project IDs": "-p ${{ vars.CF_PROJECT_ID }}",
-        "Wago project ID": "-a ${{ vars.WAGO_PROJECT_ID }}",
-        "WoWInterface addon ID": "-w ${{ vars.WOWI_PROJECT_ID }}",
+        "validated staging reuse": "args: -c -o ${{ steps.marketplaces.outputs.packager_args }}",
+        "CurseForge marketplace argument": 'packager_args="-p $CF_PROJECT_ID"',
+        "Wago optional skip": "Wago: skipped — not configured",
+        "WoWInterface optional skip": "WoWInterface: skipped — not configured",
         "CurseForge secret mapping": "CF_API_KEY: ${{ secrets.CF_API_TOKEN }}",
         "Wago secret": "WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}",
         "WoWInterface secret": "WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}",
-        "missing deployment configuration guard": "configure the required GitHub Actions variables/secrets",
+        "release source model check": "lua5.1 scripts/model_checks.lua",
+        "validated package checksum": "sha256sum --check .release/verified-package.sha256",
         "immutable release creation": 'gh release create "$TAG" "$ARCHIVE" --verify-tag',
     }
     for description, marker in required_markers.items():
@@ -367,6 +381,18 @@ def validate_release_workflow(errors: list[str]) -> None:
     for forbidden_marker in ("--clobber", "gh release upload", "zip -r"):
         if forbidden_marker in workflow:
             fail(errors, f"Release workflow contains forbidden mutable/manual packaging: {forbidden_marker}.")
+
+    publish_start = workflow.find("- name: Publish the validated staging package to addon marketplaces")
+    publish_end = workflow.find("- name: Confirm published ZIP", publish_start)
+    publish_block = workflow[publish_start:publish_end] if publish_start != -1 and publish_end != -1 else ""
+    if "args: -d" in publish_block:
+        fail(errors, "Production marketplace publishing must not use Packager's -d skip-upload mode.")
+    if "GITHUB_OAUTH" in publish_block:
+        fail(errors, "Marketplace Packager must not receive a GitHub upload token.")
+
+    for required_optional_arg in ('packager_args+=" -a $WAGO_PROJECT_ID"', 'packager_args+=" -w $WOWI_PROJECT_ID"'):
+        if required_optional_arg not in workflow:
+            fail(errors, "Optional marketplace arguments must only be added after paired configuration checks.")
 
 
 def validate_ci_workflow(errors: list[str]) -> None:
@@ -382,6 +408,9 @@ def validate_ci_workflow(errors: list[str]) -> None:
         "SemVer simulation guard": '[[ ! "$SIMULATE_VERSION" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
         "ephemeral simulation tag": 'git -c user.name="CI package simulation" -c user.email="ci@users.noreply.github.com" tag -a "$SIMULATE_VERSION"',
         "simulated package version validation": '--expected-version "$EXPECTED_VERSION"',
+        "validated staging repackaging": "args: -c -o -d",
+        "repackaged RC checksum": "sha256sum --check .release/verified-package.sha256",
+        "workflow YAML parsing": "yaml.safe_load",
         "manual-dispatch whitespace fallback": '[[ "${{ github.event_name }}" == "push" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]',
     }
     for description, marker in required_markers.items():
@@ -389,6 +418,9 @@ def validate_ci_workflow(errors: list[str]) -> None:
             fail(errors, f"Development CI is missing {description}.")
     if "develop/v2" in workflow:
         fail(errors, "Development CI must not retain develop/v2 as an active branch.")
+    for marketplace_secret in ("CF_API_TOKEN", "WAGO_API_TOKEN", "WOWI_API_TOKEN"):
+        if marketplace_secret in workflow:
+            fail(errors, "Development CI must not receive marketplace secrets.")
 
 
 def validate_interface_workflow(errors: list[str]) -> None:
@@ -416,6 +448,33 @@ def validate_interface_workflow(errors: list[str]) -> None:
         fail(errors, "Interface updater must target main, not develop/v2.")
 
 
+def validate_secret_patterns(errors: list[str]) -> None:
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            check=True,
+            cwd=ROOT,
+            capture_output=True,
+        )
+        tracked_paths = [Path(path) for path in result.stdout.decode().split("\0") if path]
+    except (OSError, subprocess.CalledProcessError) as exc:
+        fail(errors, f"Unable to list tracked files for secret-pattern checks: {exc}")
+        return
+
+    for relative_path in tracked_paths:
+        path = ROOT / relative_path
+        try:
+            source = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        for pattern, description in (
+            (SECRET_ASSIGNMENT, "possible API token assignment"),
+            (GITHUB_TOKEN, "possible GitHub token"),
+        ):
+            if pattern.search(source):
+                fail(errors, f"{description} found in tracked file: {relative_path.as_posix()}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, help="Validate a BigWigs Packager ZIP after source checks.")
@@ -427,6 +486,11 @@ def main() -> int:
         "--release-workflow",
         action="store_true",
         help="Validate release-automation guardrails.",
+    )
+    parser.add_argument(
+        "--secret-patterns",
+        action="store_true",
+        help="Reject likely raw API tokens in tracked source without reading GitHub Secrets.",
     )
     args = parser.parse_args()
 
@@ -440,6 +504,8 @@ def main() -> int:
         validate_release_workflow(errors)
         validate_ci_workflow(errors)
         validate_interface_workflow(errors)
+    if args.secret_patterns:
+        validate_secret_patterns(errors)
 
     if errors:
         for error in errors:

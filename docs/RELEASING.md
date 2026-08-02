@@ -10,10 +10,11 @@ SemVer tag (`vMAJOR.MINOR.PATCH`) is pushed for a commit already in `main`.
 The release workflow rejects non-SemVer tags, tags outside `main` history, and
 an existing GitHub Release for the same tag.
 
-Before the first marketplace release, create the three project pages and set
-the required GitHub Actions repository variables and secrets described in
-[`distribution/DEPLOY.md`](../distribution/DEPLOY.md). Never place project IDs
-or API tokens in the TOC or source files.
+Before the first marketplace release, configure the CurseForge project ID and
+API token described in [`distribution/DEPLOY.md`](../distribution/DEPLOY.md).
+Wago Addons and WoWInterface are optional: each upload is enabled only when its
+real project ID and API token are both configured. Never place project IDs or
+API tokens in the TOC or source files.
 
 After the release commit has passed normal CI and the owner explicitly approves
 publication, create the tag from the checked-out `main` commit:
@@ -26,10 +27,11 @@ git push origin v1.3.0
 ```
 
 The workflow first performs a BigWigs Packager dry-run and validates the
-installable ZIP, including that `@project-version@` became the exact tag. It
-then uses BigWigs Packager to upload the validated package to CurseForge, Wago
-Addons, and WoWInterface, and finally creates the immutable GitHub Release.
-The GitHub Release ZIP is the WowUp source.
+installable ZIP, including that `@project-version@` became the exact tag. The
+upload pass reuses that validated staging directory; CI verifies that its ZIP
+has the same SHA-256. CurseForge is required, while Wago Addons and WoWInterface
+are skipped when unconfigured. The workflow then creates one GitHub Release
+without replacing releases or assets. The GitHub Release ZIP is the WowUp source.
 
 The scheduled Interface updater opens a reviewable PR against `main`; it does
 not change compatibility metadata directly on the default branch. Review its

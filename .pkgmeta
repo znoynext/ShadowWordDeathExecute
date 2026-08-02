@@ -1,5 +1,9 @@
 package-as: ShadowWordDeathExecute
 
+# Keep the checked-in changelog in the packaged addon. This also makes the
+# upload-only Packager pass reuse the already validated staging directory.
+manual-changelog: CHANGELOG.md
+
 # Preserve prior WoWInterface downloads when Packager uploads a newer file.
 wowi-archive-previous: yes
 

@@ -31,7 +31,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes lua5.1 luarocks
+          sudo apt-get install --no-install-recommends --yes lua5.1 luarocks python3-yaml
           luarocks --lua-version=5.1 --local install luacheck 1.2.0
           echo "$HOME/.luarocks/bin" >> "$GITHUB_PATH"
           cargo install stylua --version 2.5.2 --locked
@@ -62,8 +62,21 @@ jobs:
             git diff --check HEAD^ HEAD
           fi
 
+      - name: Validate workflow YAML
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          import yaml
+
+          for workflow in sorted(Path(".github/workflows").glob("*.y*ml")):
+              yaml.safe_load(workflow.read_text(encoding="utf-8"))
+              print(f"YAML valid: {workflow}")
+          PY
+
       - name: Validate addon invariants and TOC
-        run: python3 scripts/validate_addon.py --release-workflow
+        run: python3 scripts/validate_addon.py --release-workflow --secret-patterns
 
   package:
     name: Package RC ZIP
@@ -102,6 +115,29 @@ jobs:
         env:
           EXPECTED_VERSION: ${{ inputs.simulate_version }}
         run: |
+          archive="$(find .release -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          test -n "$archive"
+          if [[ -n "$EXPECTED_VERSION" ]]; then
+            python3 scripts/validate_addon.py --package "$archive" --expected-version "$EXPECTED_VERSION"
+          else
+            python3 scripts/validate_addon.py --package "$archive"
+          fi
+          sha256sum "$archive" > .release/verified-package.sha256
+
+      - name: Repackage verified staging without uploads
+        # BigWigsMods/packager@v2.5.1
+        uses: BigWigsMods/packager@6d50adb6e8517eefef63f4afb16a6518166a6b28
+        with:
+          # -c skips source copying and -o preserves the validated staging directory.
+          args: -c -o -d
+          pandoc: false
+
+      - name: Confirm the RC ZIP matches verified staging
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.simulate_version }}
+        run: |
+          sha256sum --check .release/verified-package.sha256
           archive="$(find .release -maxdepth 1 -type f -name '*.zip' -print -quit)"
           test -n "$archive"
           if [[ -n "$EXPECTED_VERSION" ]]; then

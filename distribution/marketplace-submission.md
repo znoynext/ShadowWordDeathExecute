@@ -14,18 +14,20 @@ Do not invent the project IDs.
 | WoWInterface addon ID |  |
 | Selected license | All Rights Reserved |
 
-Future automated uploads also need GitHub Actions secrets after the projects
-exist:
+CurseForge automated uploads require its configured GitHub Actions variable and
+secret. Wago Addons and WoWInterface are optional and require their own paired
+project ID and secret only when their automatic upload is enabled:
 
 | Secret | Purpose | Owner supplies |
 | --- | --- | --- |
 | CF_API_TOKEN | CurseForge upload API | Yes |
-| WAGO_API_TOKEN | Wago Addons upload API | Yes |
-| WOWI_API_TOKEN | WoWInterface upload API | Yes |
+| WAGO_API_TOKEN | Wago Addons upload API | Optional |
+| WOWI_API_TOKEN | WoWInterface upload API | Optional |
 
 Automated marketplace publishing is enabled only for a new SemVer tag from
-`main` after all three real project IDs and all three secrets are configured.
-See `distribution/DEPLOY.md` for the exact setup and release sequence.
+`main`. CurseForge must be configured; Wago Addons and WoWInterface are skipped
+until their real IDs and secrets are both configured. See
+`distribution/DEPLOY.md` for the exact setup and release sequence.
 
 ## Shared listing text
 
