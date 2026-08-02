@@ -1,6 +1,12 @@
 # Releasing
 
-GitHub Releases are created only when a new SemVer tag such as `v1.2.3` is
+## Planned target
+
+The next planned release version is `v1.3.0`. This is release documentation
+only: do not create the tag until the approved commit is in `main` and the
+owner explicitly authorizes the release.
+
+GitHub Releases are created only when a new SemVer tag such as `v1.3.0` is
 pushed. The tagged commit must already be reachable from `main`; tags on
 `develop/v2` or another branch are rejected.
 
@@ -9,15 +15,15 @@ approved commit into `main`, push `main`, then create and push an annotated
 tag on that commit:
 
 ```text
-git tag -a v1.2.3 -m "v1.2.3"
-git push origin v1.2.3
+git tag -a v1.3.0 -m "v1.3.0"
+git push origin v1.3.0
 ```
 
 The release workflow validates the tag format, confirms the tag commit is in
 `origin/main`, refuses an existing GitHub Release, builds with BigWigs
 Packager, validates the resulting ZIP, and creates one immutable GitHub
 Release. The Packager replaces `@project-version@` in the packaged TOC with
-the exact tag value, so the release ZIP contains `## Version: v1.2.3`.
+the exact tag value, so the release ZIP contains `## Version: v1.3.0`.
 
 The uploaded ZIP is the WowUp source. Its only files are the installable
 `ShadowWordDeathExecute/` addon directory, TOC, runtime Lua, and locale Lua

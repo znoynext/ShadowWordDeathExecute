@@ -12,7 +12,9 @@ A lightweight World of Warcraft Retail addon for a Priest character that shows a
 - Respects Shadow Word: Death's own cooldown.
 - Does not hide the indicator because of the global cooldown alone.
 - Keeps the indicator available when one charge can still be used while another is recharging.
-- Optional Blizzard glow, a movable and resizable indicator, and compact `/swd` settings.
+- Optional Blizzard glow and compact `/swd` settings.
+- Manual Position X/Y fields and independent Size X/Y fields for square or rectangular icons.
+- Existing single-size settings automatically migrate to equal width and height values.
 - English and Russian localization.
 - Event-driven, with no external runtime libraries.
 
@@ -29,7 +31,8 @@ Use `/swd` to open the compact settings window:
 
 - **Lock** prevents moving the indicator.
 - **Test** shows the icon for placement.
-- **Size** changes the icon size.
+- **Position X/Y** set the indicator position manually.
+- **Size X/Y** set the icon width and height manually. Square and rectangular sizes are supported.
 - **Glow** enables the optional Blizzard glow.
 - **Reset** restores the default position and size.
 
