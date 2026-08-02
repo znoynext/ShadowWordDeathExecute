@@ -17,6 +17,7 @@ ADDON_DIR = ROOT / ADDON_NAME
 TOC_NAME = f"{ADDON_NAME}.toc"
 LUA_NAME = f"{ADDON_NAME}.lua"
 MODEL_CHECKS = ROOT / "scripts" / "model_checks.lua"
+CHANGELOG = ROOT / "CHANGELOG.md"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "update-release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 INTERFACE_WORKFLOW = ROOT / ".github" / "workflows" / "update-interface.yml"
@@ -25,6 +26,10 @@ LOCALE_FILES = {
     "ruRU": "Locales/ruRU.lua",
 }
 REQUIRED_LOCALE_KEYS = {"TITLE", "LOCK", "TEST", "POSITION", "X", "Y", "SIZE", "GLOW", "RESET"}
+REQUIRED_V130_CHANGELOG_LINES = {
+    "- Shows the indicator only when the Shadow Word: Death talent is selected and the spell is usable.",
+    "- Finalized CurseForge and Wago Addons release publishing through immutable GitHub Releases.",
+}
 EXPECTED_LOCALES = {
     "enUS": {
         "TITLE": "Shadow Word: Death Execute",
@@ -119,6 +124,26 @@ def validate_interface_versions(toc_text: str, errors: list[str], context: str) 
         fail(errors, f"{context} must not repeat an Interface version.")
 
 
+def validate_changelog(changelog_text: str, errors: list[str], context: str) -> None:
+    sections = {
+        heading: body
+        for heading, body in re.findall(
+            r"^## (?P<heading>.+?)\s*$\n(?P<body>.*?)(?=^## |\Z)",
+            changelog_text,
+            re.MULTILINE | re.DOTALL,
+        )
+    }
+    if sections.get("Unreleased", "").strip():
+        fail(errors, f"{context} Unreleased section must be empty for v1.3.0.")
+
+    version_notes = sections.get("1.3.0", "")
+    if not version_notes:
+        fail(errors, f"{context} is missing the 1.3.0 section.")
+    for line in REQUIRED_V130_CHANGELOG_LINES:
+        if line not in version_notes:
+            fail(errors, f"{context} 1.3.0 section is missing: {line}")
+
+
 def parse_locale(locale: str, errors: list[str]) -> dict[str, str]:
     path = ADDON_DIR / LOCALE_FILES[locale]
     if not path.is_file():
@@ -211,6 +236,7 @@ def validate_source(errors: list[str]) -> None:
 
     source = lua.read_text(encoding="utf-8-sig")
     toc_source = toc.read_text(encoding="utf-8-sig")
+    validate_changelog(CHANGELOG.read_text(encoding="utf-8-sig"), errors, "Source changelog")
     if "## Version: @project-version@" not in toc_source:
         fail(errors, "TOC must use BigWigs Packager's @project-version@ substitution.")
     validate_interface_versions(toc_source, errors, "Source TOC")
@@ -349,6 +375,15 @@ def validate_package(archive: Path, expected_version: str | None, errors: list[s
                     f"Packaged TOC version {version!r} does not match expected tag {expected_version!r}.",
                 )
 
+    packaged_changelog = f"{ADDON_NAME}/CHANGELOG.md"
+    if packaged_changelog in package_names:
+        with zipfile.ZipFile(archive) as package:
+            validate_changelog(
+                package.read(packaged_changelog).decode("utf-8-sig"),
+                errors,
+                "Packaged changelog",
+            )
+
 
 def validate_release_workflow(errors: list[str]) -> None:
     if not RELEASE_WORKFLOW.is_file():
@@ -414,6 +449,7 @@ def validate_ci_workflow(errors: list[str]) -> None:
         "simulated package version validation": '--expected-version "$EXPECTED_VERSION"',
         "validated staging repackaging": "args: -c -o -d",
         "repackaged RC checksum": "sha256sum --check .release/verified-package.sha256",
+        "portable RC checksum": 'printf \'%s  %s\\n\' "$sha256" "$(basename "$archive")"',
         "workflow YAML parsing": "yaml.safe_load",
         "manual-dispatch whitespace fallback": '[[ "${{ github.event_name }}" == "push" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]',
     }

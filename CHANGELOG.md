@@ -2,11 +2,9 @@
 
 ## Unreleased
 
-- Shows the indicator only when the Shadow Word: Death talent is selected and the spell is usable.
-- Finalized CurseForge and Wago Addons release publishing through immutable GitHub Releases.
-
 ## 1.3.0
 
+- Shows the indicator only when the Shadow Word: Death talent is selected and the spell is usable.
 - Added manual Position X/Y controls in the `/swd` settings.
 - Replaced the size slider with separate manual Size X/Y controls for square or rectangular icons.
 - Migrates the former single saved size to equal width and height values.
@@ -16,3 +14,4 @@
 - Added English and Russian localization.
 - Added CI, model, static, and package validation improvements.
 - Added automated Retail/PTR Interface update PRs and immutable tag-based release publishing.
+- Finalized CurseForge and Wago Addons release publishing through immutable GitHub Releases.

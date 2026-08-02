@@ -147,8 +147,8 @@ jobs:
           fi
           mkdir -p dist
           cp "$archive" dist/
-          checksum="$(sha256sum "$archive")"
-          printf '%s\n' "$checksum" > "dist/$(basename "$archive").sha256"
+          sha256="$(sha256sum "$archive" | awk '{print $1}')"
+          printf '%s  %s\n' "$sha256" "$(basename "$archive")" > "dist/$(basename "$archive").sha256"
 
       - name: Set RC artifact name
         id: rc
