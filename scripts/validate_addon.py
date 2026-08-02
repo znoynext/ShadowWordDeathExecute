@@ -376,7 +376,7 @@ def validate_ci_workflow(errors: list[str]) -> None:
         "main PR trigger": "  pull_request:\n    branches:\n      - main",
         "manual package simulation": "simulate_version:",
         "SemVer simulation guard": '[[ ! "$SIMULATE_VERSION" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
-        "ephemeral simulation tag": 'git tag -a "$SIMULATE_VERSION"',
+        "ephemeral simulation tag": 'git -c user.name="CI package simulation" -c user.email="ci@users.noreply.github.com" tag -a "$SIMULATE_VERSION"',
         "simulated package version validation": '--expected-version "$EXPECTED_VERSION"',
         "manual-dispatch whitespace fallback": '[[ "${{ github.event_name }}" == "push" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]',
     }

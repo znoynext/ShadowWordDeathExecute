@@ -88,7 +88,7 @@ jobs:
             echo "simulate_version must use vMAJOR.MINOR.PATCH format."
             exit 1
           fi
-          git tag -a "$SIMULATE_VERSION" -m "Temporary CI package simulation"
+          git -c user.name="CI package simulation" -c user.email="ci@users.noreply.github.com" tag -a "$SIMULATE_VERSION" -m "Temporary CI package simulation"
 
       - name: Build dry-run package
         # BigWigsMods/packager@v2.5.1
