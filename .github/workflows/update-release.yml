@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  repository_dispatch:
+    types:
+      - promote-tested-rc
+
+env:
+  TAG: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -22,6 +28,7 @@ jobs:
       # actions/checkout@v5.1.0
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: ${{ github.event_name == 'repository_dispatch' && format('refs/tags/{0}', github.event.client_payload.tag) || github.ref }}
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
@@ -31,7 +38,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ env.TAG }}
           CF_PROJECT_ID: ${{ vars.CF_PROJECT_ID }}
           CF_API_KEY: ${{ secrets.CF_API_TOKEN }}
           WAGO_PROJECT_ID: ${{ vars.WAGO_PROJECT_ID }}
@@ -42,6 +49,10 @@ jobs:
             exit 1
           fi
 
+          # A tag-triggered checkout can have the tagged commit without a local
+          # refs/tags/<tag> reference. Fetch the exact ref before asserting that
+          # the pushed ref is annotated.
+          git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
           if [[ "$(git cat-file -t "refs/tags/$TAG")" != "tag" ]]; then
             echo "Refusing release: $TAG must be an annotated tag."
             exit 1
@@ -71,6 +82,7 @@ jobs:
           fi
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
 
       - name: Install release validation runtime
         shell: bash
@@ -84,13 +96,15 @@ jobs:
 
       - name: Validate release source
         shell: bash
+        env:
+          RELEASE_COMMIT: ${{ steps.preflight.outputs.commit_sha }}
         run: |
           find ShadowWordDeathExecute -type f -name '*.lua' -print0 | xargs -0 -n1 luac5.1 -p
           luac5.1 -p scripts/model_checks.lua
           lua5.1 scripts/model_checks.lua
           luacheck ShadowWordDeathExecute
           stylua --check ShadowWordDeathExecute scripts/model_checks.lua
-          git diff --check "$GITHUB_SHA^!"
+          git diff --check "$RELEASE_COMMIT^!"
           python3 scripts/validate_addon.py --release-workflow --secret-patterns
 
       - name: Stage changelog in addon directory

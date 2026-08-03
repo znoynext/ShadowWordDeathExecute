@@ -19,6 +19,7 @@ LUA_NAME = f"{ADDON_NAME}.lua"
 MODEL_CHECKS = ROOT / "scripts" / "model_checks.lua"
 CHANGELOG = ROOT / "CHANGELOG.md"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "update-release.yml"
+PROMOTE_WORKFLOW = ROOT / ".github" / "workflows" / "promote-release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 INTERFACE_WORKFLOW = ROOT / ".github" / "workflows" / "update-interface.yml"
 LOCALE_FILES = {
@@ -122,6 +123,8 @@ def validate_interface_versions(toc_text: str, errors: list[str], context: str) 
         fail(errors, f"{context} has an invalid comma-separated Interface value.")
     if len(set(versions)) != len(versions):
         fail(errors, f"{context} must not repeat an Interface version.")
+    if len(versions) < 2:
+        fail(errors, f"{context} must include both Retail and PTR Interface values.")
 
 
 def validate_changelog(changelog_text: str, errors: list[str], context: str) -> None:
@@ -384,6 +387,11 @@ def validate_package(archive: Path, expected_version: str | None, errors: list[s
                 "Packaged changelog",
             )
 
+    with zipfile.ZipFile(archive) as package:
+        for entry in entries:
+            if b"@project-version@" in package.read(entry.as_posix()):
+                fail(errors, f"Package contains an unresolved @project-version@ placeholder: {entry}")
+
 
 def validate_release_workflow(errors: list[str]) -> None:
     if not RELEASE_WORKFLOW.is_file():
@@ -393,6 +401,10 @@ def validate_release_workflow(errors: list[str]) -> None:
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     required_markers = {
         "SemVer tag guard": '[[ ! "$TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
+        "promote dispatch trigger": "repository_dispatch:",
+        "promote dispatch type": "promote-tested-rc",
+        "dispatch tag input": "github.event.client_payload.tag",
+        "annotated tag fetch": 'git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"',
         "annotated tag guard": 'git cat-file -t "refs/tags/$TAG"',
         "main-history guard": 'git merge-base --is-ancestor "$TAG_COMMIT" "origin/main"',
         "immutable release preflight": 'gh release view "$TAG" --json id',
@@ -409,7 +421,7 @@ def validate_release_workflow(errors: list[str]) -> None:
         "release source model check": "lua5.1 scripts/model_checks.lua",
         "release source lint": "luacheck ShadowWordDeathExecute",
         "release source formatting": "stylua --check ShadowWordDeathExecute scripts/model_checks.lua",
-        "release source whitespace": 'git diff --check "$GITHUB_SHA^!"',
+        "release source whitespace": 'git diff --check "$RELEASE_COMMIT^!"',
         "validated package checksum": "sha256sum --check .release/verified-package.sha256",
         "immutable release creation": 'gh release create "$TAG" "$ARCHIVE" --verify-tag',
     }
@@ -420,6 +432,8 @@ def validate_release_workflow(errors: list[str]) -> None:
     for forbidden_marker in ("--clobber", "gh release upload", "zip -r"):
         if forbidden_marker in workflow:
             fail(errors, f"Release workflow contains forbidden mutable/manual packaging: {forbidden_marker}.")
+    if "workflow_dispatch:" in workflow:
+        fail(errors, "Release workflow must be dispatched only by a new tag or Promote tested RC.")
 
     publish_start = workflow.find("- name: Publish the validated staging package to addon marketplaces")
     publish_end = workflow.find("- name: Confirm published ZIP", publish_start)
@@ -432,6 +446,55 @@ def validate_release_workflow(errors: list[str]) -> None:
     for forbidden_marker in ("WO" + "WI", "WoW" + "Interface", "-w "):
         if forbidden_marker in workflow:
             fail(errors, f"Release workflow must not contain a removed marketplace reference: {forbidden_marker}.")
+
+
+def validate_promote_workflow(errors: list[str]) -> None:
+    if not PROMOTE_WORKFLOW.is_file():
+        fail(errors, "Missing promotion workflow: .github/workflows/promote-release.yml")
+        return
+
+    workflow = PROMOTE_WORKFLOW.read_text(encoding="utf-8")
+    required_markers = {
+        "manual trigger": "workflow_dispatch:",
+        "version input": "      version:",
+        "commit SHA input": "      commit_sha:",
+        "approval input": "      approval:",
+        "approval guard": '[[ "$APPROVAL" != "RELEASE APPROVED" ]]',
+        "SemVer version guard": '[[ ! "$VERSION" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
+        "full commit SHA guard": '[[ ! "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        "clean checkout guard": 'git status --porcelain',
+        "commit object guard": 'git cat-file -t "$COMMIT_SHA"',
+        "main ancestry guard": 'git merge-base --is-ancestor "$COMMIT_SHA" origin/main',
+        "exact main guard": '[[ "$(git rev-parse origin/main)" != "$COMMIT_SHA" ]]',
+        "successful push CI lookup": "event=push&status=completed",
+        "successful simulation CI lookup": "event=workflow_dispatch&status=completed",
+        "non-expired artifact guard": ".expired == false",
+        "artifact download": 'gh run download "$candidate_run_id"',
+        "portable RC checksum guard": "sha256sum --check",
+        "packaged RC validation": '--expected-version "$VERSION"',
+        "existing tag guard": 'git ls-remote --exit-code --tags origin "refs/tags/$VERSION"',
+        "existing release guard": 'gh release view "$VERSION" --json id',
+        "annotated tag creation": 'tag -a "$VERSION" "$COMMIT_SHA" -m "Shadow Word: Death Execute $VERSION"',
+        "single tag push": 'git push origin "refs/tags/$VERSION"',
+        "tag-based release dispatch": 'repos/$GITHUB_REPOSITORY/dispatches',
+        "release dispatch event": "event_type=promote-tested-rc",
+    }
+    for description, marker in required_markers.items():
+        if marker not in workflow:
+            fail(errors, f"Promotion workflow is missing {description}.")
+
+    if "contents: write" not in workflow or "actions: read" not in workflow:
+        fail(errors, "Promotion workflow must have only the required contents/actions permissions.")
+    for forbidden_marker in (
+        "CF_API_TOKEN",
+        "WAGO_API_TOKEN",
+        "CF_API_KEY",
+        "--force",
+        "gh release create",
+        "BigWigsMods/packager",
+    ):
+        if forbidden_marker in workflow:
+            fail(errors, f"Promotion workflow contains forbidden publication capability: {forbidden_marker}.")
 
 
 def validate_ci_workflow(errors: list[str]) -> None:
@@ -558,6 +621,7 @@ def main() -> int:
         fail(errors, "--expected-version requires --package.")
     if args.release_workflow:
         validate_release_workflow(errors)
+        validate_promote_workflow(errors)
         validate_ci_workflow(errors)
         validate_interface_workflow(errors)
         validate_distribution_scope(errors)

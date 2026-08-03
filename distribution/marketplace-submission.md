@@ -12,9 +12,11 @@ a GitHub Release, an upload, or marketplace publication.
 | License | All Rights Reserved |
 
 CurseForge and Wago Addons automated uploads require their configured GitHub
-Actions variables and secrets. A new SemVer tag from `main` publishes to both
-services and creates the GitHub Release used by WowUp. See
-`distribution/DEPLOY.md` for the exact setup and release sequence.
+Actions variables and secrets. A tested RC is promoted only after manual WoW
+testing and explicit `RELEASE APPROVED`; the promotion workflow then creates a
+new SemVer tag from `main`. The tag-based workflow publishes to both services
+and creates the GitHub Release used by WowUp. See `distribution/DEPLOY.md` for
+the exact setup and release sequence.
 
 ## Shared listing text
 

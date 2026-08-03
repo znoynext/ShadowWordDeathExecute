@@ -1,0 +1,214 @@
+name: Promote tested RC
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Approved SemVer release version (vMAJOR.MINOR.PATCH)."
+        required: true
+        type: string
+      commit_sha:
+        description: "Full 40-character SHA of the tested RC commit."
+        required: true
+        type: string
+      approval:
+        description: "Enter exactly: RELEASE APPROVED"
+        required: true
+        type: string
+
+# This workflow needs no marketplace secrets. Its only write is one new tag;
+# update-release.yml is the separate workflow that may publish a tagged build.
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: promote-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Verify tested RC and create annotated tag
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v5.1.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify approval, main, and immutable release destination
+        id: preflight
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          APPROVAL: ${{ inputs.approval }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$APPROVAL" != "RELEASE APPROVED" ]]; then
+            echo "Refusing promotion: approval must be exactly RELEASE APPROVED."
+            exit 1
+          fi
+
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Refusing promotion: version must use vMAJOR.MINOR.PATCH format."
+            exit 1
+          fi
+
+          if [[ ! "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Refusing promotion: commit_sha must be a full lowercase 40-character SHA."
+            exit 1
+          fi
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "Refusing promotion: checkout working tree is not clean."
+            exit 1
+          fi
+
+          if [[ "$(git cat-file -t "$COMMIT_SHA" 2>/dev/null || true)" != "commit" ]]; then
+            echo "Refusing promotion: commit_sha does not identify a commit."
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$COMMIT_SHA" origin/main; then
+            echo "Refusing promotion: tested commit is not in origin/main history."
+            exit 1
+          fi
+
+          if [[ "$(git rev-parse origin/main)" != "$COMMIT_SHA" ]]; then
+            echo "Refusing promotion: origin/main no longer points to the tested commit."
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Refusing promotion: tag $VERSION already exists."
+            exit 1
+          fi
+
+          if gh release view "$VERSION" --json id >/dev/null 2>&1; then
+            echo "Refusing promotion: GitHub Release $VERSION already exists."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Require successful Development CI for tested commit
+        id: normal_ci
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ steps.preflight.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+
+          run_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$COMMIT_SHA&event=push&status=completed&per_page=100" --jq '[.workflow_runs[] | select(.conclusion == "success") | .id][0] // empty')"
+          if [[ -z "$run_id" ]]; then
+            echo "Refusing promotion: no successful push Development CI run exists for $COMMIT_SHA."
+            exit 1
+          fi
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download and verify successful simulation RC
+        id: simulation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.preflight.outputs.version }}
+          COMMIT_SHA: ${{ steps.preflight.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+
+          artifact_name="ShadowWordDeathExecute-RC-${COMMIT_SHA::7}"
+          mapfile -t simulation_run_ids < <(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$COMMIT_SHA&event=workflow_dispatch&status=completed&per_page=100" --jq '.workflow_runs[] | select(.conclusion == "success") | .id')
+          if [[ "${#simulation_run_ids[@]}" -eq 0 ]]; then
+            echo "Refusing promotion: no successful simulation Development CI run exists for $COMMIT_SHA."
+            exit 1
+          fi
+
+          artifact_root="$(mktemp -d)"
+          archive=""
+          checksum=""
+          simulation_run_id=""
+          for candidate_run_id in "${simulation_run_ids[@]}"; do
+            artifact_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts" --jq "[.artifacts[] | select(.name == \"$artifact_name\" and .expired == false) | .id][0] // empty")"
+            if [[ -z "$artifact_id" ]]; then
+              continue
+            fi
+
+            candidate_dir="$artifact_root/$candidate_run_id"
+            mkdir -p "$candidate_dir"
+            gh run download "$candidate_run_id" --name "$artifact_name" --dir "$candidate_dir"
+
+            mapfile -t archives < <(find "$candidate_dir" -type f -name "ShadowWordDeathExecute-${VERSION}.zip")
+            mapfile -t checksums < <(find "$candidate_dir" -type f -name "ShadowWordDeathExecute-${VERSION}.zip.sha256")
+            if [[ "${#archives[@]}" -ne 1 || "${#checksums[@]}" -ne 1 ]]; then
+              continue
+            fi
+
+            if [[ "$(dirname "${archives[0]}")" != "$(dirname "${checksums[0]}")" ]]; then
+              continue
+            fi
+
+            if ! grep -Eq "^[0-9a-f]{64}  ShadowWordDeathExecute-${VERSION}\\.zip$" "${checksums[0]}"; then
+              continue
+            fi
+
+            if ! (cd "$(dirname "${archives[0]}")" && sha256sum --check "$(basename "${checksums[0]}")"); then
+              continue
+            fi
+
+            if ! python3 scripts/validate_addon.py --package "${archives[0]}" --expected-version "$VERSION"; then
+              continue
+            fi
+
+            archive="${archives[0]}"
+            checksum="${checksums[0]}"
+            simulation_run_id="$candidate_run_id"
+            break
+          done
+
+          if [[ -z "$simulation_run_id" ]]; then
+            echo "Refusing promotion: no non-expired simulation artifact passed checksum and package validation."
+            exit 1
+          fi
+
+          echo "run_id=$simulation_run_id" >> "$GITHUB_OUTPUT"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and dispatch tag-based release workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.preflight.outputs.version }}
+          COMMIT_SHA: ${{ steps.preflight.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if [[ "$(git rev-parse origin/main)" != "$COMMIT_SHA" ]]; then
+            echo "Refusing promotion: origin/main changed after RC verification."
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Refusing promotion: tag $VERSION already exists."
+            exit 1
+          fi
+
+          if gh release view "$VERSION" --json id >/dev/null 2>&1; then
+            echo "Refusing promotion: GitHub Release $VERSION already exists."
+            exit 1
+          fi
+
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" tag -a "$VERSION" "$COMMIT_SHA" -m "Shadow Word: Death Execute $VERSION"
+          test "$(git cat-file -t "$VERSION")" = "tag"
+          test "$(git rev-list -n 1 "$VERSION")" = "$COMMIT_SHA"
+          git push origin "refs/tags/$VERSION"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/dispatches" -f event_type=promote-tested-rc -f "client_payload[tag]=$VERSION"

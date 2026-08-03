@@ -28,8 +28,9 @@ source or grant redistribution, forks, or modifications.
 
 Pushes and pull requests to `main` run Development CI only. It checks Lua,
 formatting, model/static/package invariants, and uploads an installable RC ZIP
-artifact. It always uses BigWigs Packager dry-run mode and receives no
-marketplace secrets.
+artifact. It always uses BigWigs Packager dry-run mode, receives no marketplace
+secrets, and never creates a tag, GitHub Release, CurseForge upload, or Wago
+upload.
 
 Once per day, the Interface updater checks the Retail and PTR values and, when
 needed, opens `automation/interface-version` against `main`. Review the TOC
@@ -38,18 +39,42 @@ diff and PR CI; merge it normally. The temporary branch is deleted afterwards.
 The current TOC contains comma-separated Retail and PTR values. Future values
 are maintained by that PR workflow rather than guessed manually.
 
-## Publish a stable version
+## Promote a tested stable version
 
-After the release commit is on a green `main` and the owner approves it:
+The required sequence is:
 
 ```text
-git checkout main
-git pull --ff-only origin main
-git tag -a v1.3.0 -m "v1.3.0"
-git push origin v1.3.0
+push main
+→ Development CI
+→ versioned simulation RC
+→ manual WoW test
+→ RELEASE APPROVED
+→ Promote tested RC
+→ annotated tag
+→ GitHub Release + CurseForge + Wago
+→ WowUp through the GitHub Release
 ```
 
-Only `vMAJOR.MINOR.PATCH` tags from `main` are accepted. The release job:
+After a green push CI and successful versioned simulation RC for the exact
+commit, the owner must complete manual WoW testing and explicitly approve the
+release with `RELEASE APPROVED`. Codex then manually dispatches **Promote tested
+RC** with the SemVer version and full 40-character tested commit SHA.
+
+Create the versioned simulation RC by manually dispatching **Development CI**
+with its `simulate_version` input. That run is dry-run packaging only.
+
+The promotion workflow refuses an invalid approval, version, SHA, non-current
+`main` commit, missing/expired RC, checksum or package failure, existing tag,
+or existing GitHub Release. It creates and pushes only a new annotated tag.
+It does not receive marketplace secrets and cannot upload files. It then sends
+an internal dispatch to the tag-based release workflow, which fetches and
+validates that annotated tag before publication. This dispatch is necessary
+because a tag pushed with GitHub Actions' `GITHUB_TOKEN` does not trigger a
+second `push` workflow.
+
+Only `vMAJOR.MINOR.PATCH` annotated tags from `main` are accepted. The separate
+tag-based release job is the only workflow that receives marketplace secrets.
+It:
 
 1. verifies the tag format, `main` ancestry, both marketplace configurations,
    and the absence of an existing GitHub Release;
@@ -68,9 +93,9 @@ WowUp uses the GitHub Release ZIP. After the first stable GitHub Release, open
 https://github.com/znoynext/ShadowWordDeathExecute
 ```
 
-If a required project ID or token is missing, the job stops before packaging or
-publication with a clear configuration error. Do not add placeholders to bypass
-the check.
+If a required project ID or token is missing, the tag-based job stops before
+packaging or publication with a clear configuration error. Do not add
+placeholders to bypass the check.
 
 ## Compatibility scope
 
