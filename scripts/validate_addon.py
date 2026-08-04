@@ -401,12 +401,19 @@ def validate_release_workflow(errors: list[str]) -> None:
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     required_markers = {
         "SemVer tag guard": '[[ ! "$TAG" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]',
+        "manual recovery trigger": "workflow_dispatch:",
+        "manual recovery tag input": 'description: "Existing approved annotated SemVer tag"',
         "promote dispatch trigger": "repository_dispatch:",
         "promote dispatch type": "promote-tested-rc",
         "dispatch tag input": "github.event.client_payload.tag",
-        "annotated tag fetch": 'git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"',
-        "annotated tag guard": 'git cat-file -t "refs/tags/$TAG"',
+        "manual recovery tag input use": "&& inputs.tag",
+        "main workflow checkout": "ref: main",
+        "release verification ref": 'VERIFY_REF="refs/release-tags/$TAG"',
+        "annotated tag fetch": 'git fetch --no-tags origin "+refs/tags/$TAG:$VERIFY_REF"',
+        "annotated tag guard": 'git cat-file -t "$VERIFY_REF"',
+        "peeled remote tag commit": 'git rev-parse "$VERIFY_REF^{commit}"',
         "main-history guard": 'git merge-base --is-ancestor "$TAG_COMMIT" "origin/main"',
+        "exact release source checkout": 'git checkout --detach "$TAG_COMMIT"',
         "immutable release preflight": 'gh release view "$TAG" --json id',
         "pinned BigWigs Packager": "BigWigsMods/packager@6d50adb6e8517eefef63f4afb16a6518166a6b28",
         "CurseForge preflight": "CurseForge: required configuration missing",
@@ -432,8 +439,8 @@ def validate_release_workflow(errors: list[str]) -> None:
     for forbidden_marker in ("--clobber", "gh release upload", "zip -r"):
         if forbidden_marker in workflow:
             fail(errors, f"Release workflow contains forbidden mutable/manual packaging: {forbidden_marker}.")
-    if "workflow_dispatch:" in workflow:
-        fail(errors, "Release workflow must be dispatched only by a new tag or Promote tested RC.")
+    if 'refs/tags/$TAG:refs/tags/$TAG' in workflow:
+        fail(errors, "Release workflow must not fetch a release tag into refs/tags/$TAG.")
 
     publish_start = workflow.find("- name: Publish the validated staging package to addon marketplaces")
     publish_end = workflow.find("- name: Confirm published ZIP", publish_start)

@@ -7,9 +7,20 @@ on:
   repository_dispatch:
     types:
       - promote-tested-rc
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing approved annotated SemVer tag"
+        required: true
+        type: string
 
 env:
-  TAG: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.tag || github.ref_name }}
+  TAG: >-
+    ${{ github.event_name == 'repository_dispatch'
+        && github.event.client_payload.tag
+        || github.event_name == 'workflow_dispatch'
+        && inputs.tag
+        || github.ref_name }}
 
 permissions:
   contents: write
@@ -17,7 +28,7 @@ permissions:
 # Serialize retries for a tag. This complements the existing-release preflight
 # and never cancels an in-progress immutable publication.
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.event_name == 'repository_dispatch' && github.event.client_payload.tag || github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -28,9 +39,8 @@ jobs:
       # actions/checkout@v5.1.0
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.event_name == 'repository_dispatch' && format('refs/tags/{0}', github.event.client_payload.tag) || github.ref }}
+          ref: main
           fetch-depth: 0
-          fetch-tags: true
           persist-credentials: false
 
       - name: Verify release tag, marketplace configuration, and immutable destination
@@ -44,21 +54,24 @@ jobs:
           WAGO_PROJECT_ID: ${{ vars.WAGO_PROJECT_ID }}
           WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
         run: |
+          set -euo pipefail
+
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Tag must use vMAJOR.MINOR.PATCH format."
             exit 1
           fi
 
-          # A tag-triggered checkout can have the tagged commit without a local
-          # refs/tags/<tag> reference. Fetch the exact ref before asserting that
-          # the pushed ref is annotated.
-          git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
-          if [[ "$(git cat-file -t "refs/tags/$TAG")" != "tag" ]]; then
-            echo "Refusing release: $TAG must be an annotated tag."
+          # Keep the remote tag object outside refs/tags. actions/checkout can
+          # otherwise replace the local tag ref with its peeled commit on tag events.
+          VERIFY_REF="refs/release-tags/$TAG"
+          git update-ref -d "$VERIFY_REF" 2>/dev/null || true
+          git fetch --no-tags origin "+refs/tags/$TAG:$VERIFY_REF"
+          if [[ "$(git cat-file -t "$VERIFY_REF")" != "tag" ]]; then
+            echo "Refusing release: remote $TAG must be an annotated tag."
             exit 1
           fi
 
-          TAG_COMMIT="$(git rev-list -n 1 "refs/tags/$TAG")"
+          TAG_COMMIT="$(git rev-parse "$VERIFY_REF^{commit}")"
           test -n "$TAG_COMMIT"
           git fetch --no-tags origin main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor "$TAG_COMMIT" "origin/main"; then
@@ -80,6 +93,10 @@ jobs:
             echo "Wago: required configuration missing"
             exit 1
           fi
+
+          git checkout --detach "$TAG_COMMIT"
+          test "$(git rev-parse HEAD)" = "$TAG_COMMIT"
+          test -z "$(git status --porcelain)"
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "commit_sha=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
